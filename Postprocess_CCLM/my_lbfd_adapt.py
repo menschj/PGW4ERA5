@@ -1,10 +1,11 @@
 import xarray as xr
-import sys
+import sys, argparse
 import os
 import glob
 from pathlib import Path
 import numpy as np
 from datetime import datetime,timedelta
+from dateutil.relativedelta import relativedelta
 
 """
 Add the calculated difference in all necessary variables to the boundary condition (lbfd) files for one year.
@@ -47,6 +48,16 @@ def hour_of_year(dt):
     return(int((dt - beginning_of_year).total_seconds() // 3600))
 
 
+def fix_grid_coord_diffs(fix_ds, ref_ds):
+    ### There may be small grid inconsistencies that have to be fixed... 
+    ### the reason is that the cdo remapping produes them.
+    if np.max(np.abs(fix_ds.rlon.values - ref_ds.rlon.values)) > 1E-5:
+        raise ValueError('Grids differ!')
+    if np.mean(np.abs(fix_ds.rlon.values - ref_ds.rlon.values)) > 1E-8:
+        print('fix small differences in inputs grids.')
+        fix_ds['rlon'] = ref_ds.rlon
+        fix_ds['rlat'] = ref_ds.rlat
+
 
 #get reference pressure function
 def getpref(vcflat, terrainpath, height_flat):
@@ -54,6 +65,7 @@ def getpref(vcflat, terrainpath, height_flat):
     smoothing = np.where(smoothing > 0, smoothing, 0)
 
     const = xr.open_dataset(terrainpath)
+
     hsurf = const['HSURF'].squeeze()
 
     #the height at which the reference pressure needs to be computed needs to be derived form the terrain   following coordinates:
@@ -89,11 +101,19 @@ def getpref(vcflat, terrainpath, height_flat):
 
 
 #function to adapt all lbfd files:
-def lbfdadapt(lbfdpath, outputpath, Diffspath, difftimesteps, changeyears, pref, pref_sfc, dz, recompute_pressure, starttimestep, height_flat):
+def lbfdadapt(lbfdpath, outputpath, Diffspath, lbfd_dts, delta_hour_inc, 
+                changeyears, pref, pref_sfc, dz, 
+                recompute_pressure, height_flat):
 
     #function to add all variables but humidity to the boundary field (use given timestep)
     def diffadd(var, num, lbfd):
         Diff = xr.open_dataset(f'{Diffspath}/{var}{num:05d}.nc')[var]
+        ## HCH2021 start
+        ## There are small grid inconsistencies that have to be fixed... 
+        fix_grid_coord_diffs(Diff, lbfd)
+        fix_grid_coord_diffs(Diff, lbfd)
+        ## HCH 2021 stop
+
         lbfd[var].data = lbfd[var].data + Diff.data.astype('float32')
 
     #function to calculate relative humidity
@@ -118,6 +138,11 @@ def lbfdadapt(lbfdpath, outputpath, Diffspath, difftimesteps, changeyears, pref,
         #temperature changes
         dT_sfc = xr.open_dataset(f'{Diffspath}/T_S{num:05d}.nc')['T_S']
         dT_atmos = xr.open_dataset(f'{Diffspath}/T{num:05d}.nc')['T']
+        ## HCH2021 start
+        ## There are small grid inconsistencies that have to be fixed... 
+        fix_grid_coord_diffs(dT_sfc, lbfd)
+        fix_grid_coord_diffs(dT_atmos, lbfd)
+        ## HCH 2021 stop
 
         #get pressure field
         pressure_original = lbfd['PP'] + pref
@@ -127,7 +152,8 @@ def lbfdadapt(lbfdpath, outputpath, Diffspath, difftimesteps, changeyears, pref,
         sfc_temperature = lbfd['T_S']
 
         #define barometric height formula
-        def barometric(reference_pressure, reference_temperature, dz, lapse_rate):
+        def barometric(reference_pressure, reference_temperature, 
+                        dz, lapse_rate):
                 R = 8.3144598 #universal gas constant
                 M = 0.0289644 # molar mass of air
                 g = 9.80665
@@ -160,6 +186,11 @@ def lbfdadapt(lbfdpath, outputpath, Diffspath, difftimesteps, changeyears, pref,
     def computeQVnew(lbfd, num, RH_old, RH_S_old):
         Diffrh = xr.open_dataset(f'{Diffspath}/RELHUM{num:05d}.nc')['RELHUM']
         Diffrh_s = xr.open_dataset(f'{Diffspath}/RELHUM_S{num:05d}.nc')['RELHUM_S']
+        ## HCH2021 start
+        ## There are small grid inconsistencies that have to be fixed... 
+        fix_grid_coord_diffs(Diffrh, lbfd)
+        fix_grid_coord_diffs(Diffrh_s, lbfd)
+        ## HCH 2021 stop
 
         newRH = RH_old.data + Diffrh.data.astype('float32')
         newRH_S = RH_S_old.data + Diffrh_s.data.astype('float32')
@@ -187,84 +218,81 @@ def lbfdadapt(lbfdpath, outputpath, Diffspath, difftimesteps, changeyears, pref,
 
     #if output directory doesn't exist create it
     Path(outputpath).mkdir(parents=True, exist_ok=True)
-    num = starttimestep #set timestep where to start
+
 
     #loop over all boundary fields:
-    for lbfdnum in files:
+    for lbfd_dt in lbfd_dts:
         #print and open boundary data
-        print(num, lbfdnum)
-        quit()
+        delta_num = int(hour_of_year(lbfd_dt)/delta_hour_inc)
+        #delta_num = 0
+        print(delta_num, lbfd_dt)
+        inp_lbfd_file = os.path.join(lbfdpath, 
+                    'lbfd{:%Y%m%d%H%M%S}.nc'.format(lbfd_dt))
+        out_lbfd_dt = lbfd_dt.replace(year=lbfd_dt.year + changeyears)
+        out_lbfd_file = os.path.join(outputpath, 
+                    'lbfd{:%Y%m%d%H%M%S}.nc'.format(out_lbfd_dt))
         
-        i_compute = 0
-        if lbfdnum == 'lbfd20060820000000.nc':
-            i_compute = 1
+        print('compute change for lbfd file: {}'.format(inp_lbfd_file))
+        print('output file: {}'.format(out_lbfd_file))
 
-        #at the end of year reset the timestep counter
-        if num >= difftimesteps - 1:
-            num = 0
+        lbfd = xr.open_dataset(inp_lbfd_file, decode_cf=False)
 
-        if i_compute:
-            print('compute {}'.format(lbfdnum))
-            print(num)
-            #quit()
+        #run the defined functions and change filename & time:
+        RH_old, RH_S_old = comprelhums(lbfd, pref, pref_sfc)
+        print('RH done')
 
-            lbfd = xr.open_dataset(lbfdnum, decode_cf=False)
+        if recompute_pressure == True:
+            lbfd = pressure_recompute(lbfd, delta_num, pref, dz, height_flat)
+            variables = ['T', 'T_S', 'U', 'V']
+        else:
+            variables = ['T', 'T_S', 'U', 'V', 'PP']
+        print('p done')
 
-            #run the defined functions and change filename & time:
-            RH_old, RH_S_old = comprelhums(lbfd, pref, pref_sfc)
-            print('RH done')
+        for var in variables:
+            print('add {}'.format(var))
+            diffadd(var, delta_num, lbfd)
 
-            if recompute_pressure == True:
-                lbfd = pressure_recompute(lbfd, num, pref, dz, height_flat)
-                variables = ['T', 'T_S', 'U', 'V']
-            else:
-                variables = ['T', 'T_S', 'U', 'V', 'PP']
-            print('p done')
+        #change time to future
+        endtimestring = lbfd.time.units[-15:]
+        old_yyyy_timestamp = int(lbfd.time.units[-19:-15])
+        new_yyyy_timestamp = old_yyyy_timestamp + changeyears
+        lbfd.time.attrs['units'] = f'seconds since {new_yyyy_timestamp}{endtimestring}'
 
-            for var in variables:
-                print('add {}'.format(var))
-                diffadd(var, num, lbfd)
+        lbfd = computeQVnew(lbfd, delta_num, RH_old, RH_S_old)
+        print('QV done')
 
-            #change time to future
-            endtimestring = lbfd.time.units[-15:]
-            old_yyyy_timestamp = int(lbfd.time.units[-19:-15])
-            new_yyyy_timestamp = old_yyyy_timestamp + changeyears
-            lbfd.time.attrs['units'] = f'seconds since {new_yyyy_timestamp}{endtimestring}'
+        lbfd.to_netcdf(out_lbfd_file, mode='w')
+        lbfd.close()
+        print('save done')
 
-            lbfd = computeQVnew(lbfd, num, RH_old, RH_S_old)
-            print('QV done')
+        # sanity check
+        print('sanity check..')
+        ds = xr.open_dataset(out_lbfd_file)
+        var_names = ['U','V','T','QV','PP','T_S','QV_S']
+        for var_name in var_names:
+            if np.sum(np.isnan(ds[var_name])).values > 0:
+                ds.close()
+                os.remove(out_lbfd_file)
+                raise ValueError('File {} var {} broken!'.format(
+                                out_lbfd_file, var_name))
+        ds.close()
+        print('..completed!')
 
-            endpart = lbfdnum[8:]
-            lbfdyear = int(lbfdnum[4:8])
-            lbfdyear = lbfdyear + changeyears
-            out_file_name = f'{outputpath}/lbfd{lbfdyear}{endpart}'
-            lbfd.to_netcdf(out_file_name, mode='w')
-            lbfd.close()
-
-            # sanity check
-            ds = xr.open_dataset(out_file_name)
-            var_names = ['U','V','T','QV','PP','T_S','QV_S']
-            for var_name in var_names:
-                if np.sum(np.isnan(ds[var_name])).values > 0:
-                    raise ValueError('File {} var {} broken!'.format(
-                                    out_file_name, var_name))
-            ds.close()
-
-        num = num + 1
 
 
 
 
 		
-def workflow_lbfd(year, lbfdpath, outputpath, Diffspath, 
-                terrainpath, starttimestep, difftimesteps, 
+def workflow_lbfd(lbfdpath, outputpath, Diffspath, 
+                terrainpath, lbfd_dts, delta_hour_inc,
                 changeyears, recompute_pressure):
-	
+
     #read height coordinate from file
     os.chdir(lbfdpath)
     files = glob.glob('lbfd??????????????.nc')
     height_flat_half = xr.open_dataset(files[0]).vcoord #these are half levels
     height_flat = xr.open_dataset(files[0]).vcoord[:-1]
+
     vcflat=xr.open_dataset(files[0]).vcoord.vcflat
 
     #get the full level height
@@ -273,60 +301,81 @@ def workflow_lbfd(year, lbfdpath, outputpath, Diffspath,
     
     pref, pref_sfc, height_array = getpref(vcflat, terrainpath, height_flat)
     dz = height_array[:-1] - height_array[1:] #get height difference between model levels
-    lbfdadapt(lbfdpath, outputpath, Diffspath, difftimesteps, 
+    lbfdadapt(lbfdpath, outputpath, Diffspath, lbfd_dts, delta_hour_inc,
             changeyears, pref,
-            pref_sfc, dz, recompute_pressure, starttimestep, height_flat)
+            pref_sfc, dz, recompute_pressure, height_flat)
 
 	
 if __name__ == "__main__":
 
+    ## input arguments
+    parser = argparse.ArgumentParser(description =
+                    'Perturb COSMO boundary conditions with PGW climate deltas.')
+    ## variable to plot
+    #parser.add_argument('sim_name', type=str,
+    #                    help='separate multiple with ","')
+    # delta hour increments
+    parser.add_argument('-d', '--delta_hour_inc', type=int, default=3)
+    # first date 
+    parser.add_argument('-f', '--first_dt', type=str, default='2006080100')
+    # last date 
+    parser.add_argument('-l', '--last_dt', type=str, default='2006080121')
+    # sim start date 
+    parser.add_argument('-s', '--sim_start_date', type=str, default='20060801')
+    args = parser.parse_args()
+    print(args)
+    #first_date = datetime.strptime(args.first_date, '%Y%m%d')
+    #last_date = datetime.strptime(args.last_date, '%Y%m%d')
+    first_dt = datetime.strptime(args.first_dt, '%Y%m%d%H')
+    last_dt = datetime.strptime(args.last_dt, '%Y%m%d%H')
+    sim_start_date = datetime.strptime(args.sim_start_date, '%Y%m%d')
 
-    year = int(sys.argv[1]) # if script is run by its own
-
-    lbfdpath = f'/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_long/int2lm_out/'
-
-    changeyears = 88
-    newyear = year + changeyears
-    outputpath = '/scratch/snx3000/heimc/lmp/wd/94080100_SA_3_long/TEST'
-
-    Diffspath = '/scratch/snx3000/heimc/pgw/vertint_final'
-    difftimesteps = 366 * 8
-    #difftimesteps = 2
-
-    starttimestep = 212 * 8
-
-    starttimestep = 364 * 8
-
-    #starttimestep = 59 * 8
-
-    timestep = timedelta(hours=3)
-    first_dt = datetime(2006,12,31,0,0)
-    last_dt = datetime(2006,12,31,0,0)
-    dts = np.arange(first_dt, last_dt+timestep, timestep).tolist()
-    print(dts)
-    print(int(hour_of_year(dts[0])/3))
-
-
-
-    #terrainpath='/store/c2sm/ch4/robro/surrogate_input/lffd1969120100c.nc'
-    terrainpath='/project/pr94/heimc/data/cosmo_out/SA_3_long/lm_c/lffd20060801000000c.nc'
-
+    wd_path = '/scratch/snx3000/heimc/lmp/wd'
+    changeyears = 0
+    Diffspath = '/scratch/snx3000/heimc/pgw/vertint_large3'
+    terrainpath = '/scratch/snx3000/heimc/pgw/constant_large3.nc'
     recompute_pressure = True
 
-    #if submitted by master.py
-    if len(sys.argv)>5:
-        year=int(sys.argv[1])
-        lbfdpath=str(sys.argv[2])
-        outputpath=str(sys.argv[3])
-        Diffspath=str(sys.argv[4])
-        terrainpath=str(sys.argv[5])
-        starttimestep=int(sys.argv[6])
-        difftimesteps=int(sys.argv[7])
-        changeyears=int(sys.argv[8])
-        recompute_pressure=bool(sys.argv[9])
+    year = sim_start_date.year
+    print(year)
+
+    #lbfdpath = os.path.join(wd_path, '06080100_SA_3_ctrl/int2lm_out/')
+    #terrainpath='/project/pr94/heimc/data/cosmo_out/SA_3_ctrl/lm_c/lffd20060801000000c.nc'
+    #terrainpath = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_ctrl/lm_coarse/lffd20060801000000c.nc'
+    #outputpath = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_pgw/int2lm_out/'
+
+    lbfdpath = os.path.join(wd_path, 
+                    '{:%y%m%d}00_SA_3_ctrl/int2lm_out/'.format(sim_start_date))
+    #terrainpath = os.path.join(wd_path, 
+    #                '{:%y%m%d}00_SA_3_ctrl/lm_coarse/lffd{:%Y%m%d}000000c.nc'.format(
+    #                                                sim_start_date, sim_start_date))
+    outputpath = os.path.join(wd_path, 
+                    '{:%y%m%d}00_SA_3_pgw/int2lm_out/'.format(sim_start_date))
+    print(lbfdpath)
+    print(terrainpath)
+    print(outputpath)
 
 
 
-    workflow_lbfd(year, lbfdpath, outputpath, Diffspath, 
-            terrainpath, starttimestep, difftimesteps, 
+    newyear = year + changeyears
+
+
+    delta_hour_inc = args.delta_hour_inc
+    timestep = timedelta(hours=delta_hour_inc)
+
+    #first_dt = first_date
+    #last_dt = last_date + timedelta(days=1) - timedelta(hours=delta_hour_inc)
+
+
+    lbfd_dts = np.arange(first_dt, last_dt+timestep, timestep).tolist()
+    print('Run for dates {}'.format(lbfd_dts))
+    #quit()
+
+    #for dt in lbfd_dts:
+    #    delta_num = int(hour_of_year(dt)/delta_hour_inc)
+    #    print(delta_num)
+    #quit()
+
+    workflow_lbfd(lbfdpath, outputpath, Diffspath, 
+            terrainpath, lbfd_dts, delta_hour_inc,
             changeyears, recompute_pressure)
