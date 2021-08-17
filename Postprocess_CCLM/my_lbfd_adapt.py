@@ -312,8 +312,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description =
                     'Perturb COSMO boundary conditions with PGW climate deltas.')
     ## variable to plot
-    #parser.add_argument('sim_name', type=str,
-    #                    help='separate multiple with ","')
     # delta hour increments
     parser.add_argument('-d', '--delta_hour_inc', type=int, default=3)
     # first date 

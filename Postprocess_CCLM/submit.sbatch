@@ -4,8 +4,8 @@
 #SBATCH --time=23:30:00
 #SBATCH --cpus-per-task=12
 #SBATCH --partition=normal
-#SBATCH --output=bOut/out8
-#SBATCH --error=bOut/err8
+#SBATCH --output=bOut/out0
+#SBATCH --error=bOut/err0
 #SBATCH --ntasks=1
 #SBATCH --account='pr94'
 #SBATCH --constraint=gpu
@@ -18,28 +18,67 @@ echo -e "$SLURM_JOB_NAME started on $(date):\n $command $1 $2\n"
 #srun -c $SLURM_CPUS_PER_TASK python -u my_rename_variables.py hurs
 #srun -c $SLURM_CPUS_PER_TASK python -u my_rename_variables.py hurs,tas
 
-##### perpare laf file
+
+### MANUALLY
+############################################################
+############################################################
+
+### perpare laf file
+############################################################
 #srun -c $SLURM_CPUS_PER_TASK python -u laf_adapt.py
 
-year=2006
-month=08
-start_day=30
-end_day=31
+### perpare lbfd files
+############################################################
 
-start_dayhr=${start_day}00
-end_dayhr=${end_day}21
-sim_start_date=${year}${month}01
-
-arg_f=${year}${month}${start_dayhr}
-arg_l=${year}${month}${end_dayhr}
-
+#year=2006
+#month=09
+#start_day=01
+#end_day=30
+#
+#start_dayhr=${start_day}00
+#end_dayhr=${end_day}21
+#sim_start_date=${year}${month}01
+#
 #arg_f=2006090100
 #arg_l=2006090100
+#
+#arg_f=${year}${month}${start_dayhr}
+#arg_l=${year}${month}${end_dayhr}
+#srun -c $SLURM_CPUS_PER_TASK python -u my_lbfd_adapt.py -d 3 \
+#                -f ${arg_f} -l ${arg_l} -s ${sim_start_date}
 
+
+
+
+### AUTOMATICALLY
+############################################################
+############################################################
+arg_f=${1}00
+arg_l=${2}00
+sim_start_date=${1}
+
+echo $arg_f
+echo $arg_l
+echo $sim_start_date
+
+### perpare laf file
+############################################################
+echo RUN laf_adapt.py
+echo "#######################################################"
+srun -c $SLURM_CPUS_PER_TASK python -u laf_adapt.py -d 3 \
+                -s ${sim_start_date}
 
 ### perpare lbfd files
+############################################################
+echo RUN lbfd_adapt.py
+echo "#######################################################"
 srun -c $SLURM_CPUS_PER_TASK python -u my_lbfd_adapt.py -d 3 \
                 -f ${arg_f} -l ${arg_l} -s ${sim_start_date}
+
+
+
+
+
 
 echo -e "$SLURM_JOB_NAME finished on $(date)\n"
 

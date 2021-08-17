@@ -1,7 +1,8 @@
 import xarray as xr
-import sys
+import sys, argparse
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from my_lbfd_adapt import hour_of_year, fix_grid_coord_diffs
 import numpy as np
 import os
@@ -41,21 +42,44 @@ Output:
 	The adapted laf file will be written to the chosen location and should directly be usable for CCLM.
 """
 
-lafpath = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_ctrl/int2lm_out/laf20060801000000.nc'
-newyear = 2006
-newtimestring = f'seconds since {newyear}-01-01 00:00:00'
-outputpath = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_pgw/int2lm_out'
+## input arguments
+parser = argparse.ArgumentParser(description =
+                'Perturb COSMO initial condition with PGW climate deltas.')
+# delta hour increments
+parser.add_argument('-d', '--delta_hour_inc', type=int, default=3)
+# sim start date 
+parser.add_argument('-s', '--sim_start_date', type=str, default='20060801')
+args = parser.parse_args()
+print(args)
+sim_start_date = datetime.strptime(args.sim_start_date, '%Y%m%d')
+
+wd_path = '/scratch/snx3000/heimc/lmp/wd'
+changeyears = 0
 Diffspath = '/scratch/snx3000/heimc/pgw/vertint_large3'
-#terrainpath='/project/pr94/heimc/data/cosmo_out/SA_3_ctrl/lm_c/lffd20060801000000c.nc'
-#terrainpath = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_ctrl/lm_coarse/lffd20060801000000c.nc'
 terrainpath = '/scratch/snx3000/heimc/pgw/constant_large3.nc'
-#laftimestring = 'seconds since 2094-08-01 00:00:00'
-laftimestring = 'seconds since 2006-01-01 00:00:00'
-init_dt = datetime(2006,8,1,0)
-delta_hour_inc = 3
-laftimestep = int(hour_of_year(init_dt)/delta_hour_inc)
-print('use time step {}'.format(laftimestep))
 recompute_pressure = True
+
+year = sim_start_date.year
+print(year)
+
+lafpath = os.path.join(wd_path, 
+        '{:%y%m%d}00_SA_3_ctrl/int2lm_out/laf{:%Y%m%d}000000.nc'.format(
+                    sim_start_date, sim_start_date))
+newyear = year + changeyears
+newtimestring = f'seconds since {newyear}-01-01 00:00:00'
+outputpath = os.path.join(wd_path, 
+                '{:%y%m%d}00_SA_3_pgw/int2lm_out/'.format(sim_start_date))
+laftimestring = 'seconds since 2006-01-01 00:00:00'
+#init_dt = datetime(2006,8,1,0)
+init_dt = sim_start_date
+laftimestep = int(hour_of_year(init_dt)/args.delta_hour_inc)
+print('use time step {}'.format(laftimestep))
+
+pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)
+output_laf_path = os.path.join(wd_path, 
+        '{:%y%m%d}00_SA_3_pgw/int2lm_out/laf{:%Y%m%d}000000.nc'.format(
+            pgw_sim_start_date, pgw_sim_start_date))
+
 
 if len(sys.argv)>5:
     lafpath=str(sys.argv[1])
@@ -116,7 +140,7 @@ def getpref(vcflat, terrainpath, height_flat):
 
 
 
-def lafadapt(lafpath, newyear, outputpath, Diffspath, laftimestep, 
+def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep, 
             newtimestring, pref, pref_sfc, height_array, recompute_pressure):
 
     laffile = xr.open_dataset(lafpath, decode_cf=False)
@@ -234,7 +258,7 @@ def lafadapt(lafpath, newyear, outputpath, Diffspath, laftimestep,
         return laffile
 
 
-#compute new humidity funcion once temperature and pressure were changed
+    #compute new humidity funcion once temperature and pressure were changed
     def computeQVnew(laffile, RH_old, RH_S_old):
         Diffrh = xr.open_dataset(f'{Diffspath}/RELHUM{laftimestep:05d}.nc')['RELHUM']
         Diffrh_s = xr.open_dataset(f'{Diffspath}/RELHUM_S{laftimestep:05d}.nc')['RELHUM_S']
@@ -284,12 +308,12 @@ def lafadapt(lafpath, newyear, outputpath, Diffspath, laftimestep,
     laffile = computeQVnew(laffile, RH_old, RH_S_old)
     print('moisture')
 
-    endpartlaf = lafpath[-9:]
-
-    laffile.to_netcdf(f'{outputpath}/laf{newyear}{endpartlaf}', mode='w')
+    laffile.to_netcdf(output_laf_path, mode='w')
     laffile.close()
-    print(f'saved {outputpath}/laf{newyear}{endpartlaf}')
+    print(f'saved {output_laf_path}')
+
+
 
 pref, pref_sfc, height_array = getpref(vcflat, terrainpath, height_flat)
-lafadapt(lafpath, newyear, outputpath, Diffspath, laftimestep, newtimestring,
+lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep, newtimestring,
         pref, pref_sfc, height_array, recompute_pressure)
