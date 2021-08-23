@@ -235,48 +235,53 @@ def lbfdadapt(lbfdpath, outputpath, Diffspath, lbfd_dts, delta_hour_inc,
         print('compute change for lbfd file: {}'.format(inp_lbfd_file))
         print('output file: {}'.format(out_lbfd_file))
 
-        lbfd = xr.open_dataset(inp_lbfd_file, decode_cf=False)
+        if os.path.exists(inp_lbfd_file):
+            lbfd = xr.open_dataset(inp_lbfd_file, decode_cf=False)
 
-        #run the defined functions and change filename & time:
-        RH_old, RH_S_old = comprelhums(lbfd, pref, pref_sfc)
-        print('RH done')
+            #run the defined functions and change filename & time:
+            RH_old, RH_S_old = comprelhums(lbfd, pref, pref_sfc)
+            print('RH done')
 
-        if recompute_pressure == True:
-            lbfd = pressure_recompute(lbfd, delta_num, pref, dz, height_flat)
-            variables = ['T', 'T_S', 'U', 'V']
+            if recompute_pressure == True:
+                lbfd = pressure_recompute(lbfd, delta_num, pref, dz, height_flat)
+                variables = ['T', 'T_S', 'U', 'V']
+            else:
+                variables = ['T', 'T_S', 'U', 'V', 'PP']
+            print('p done')
+
+            for var in variables:
+                print('add {}'.format(var))
+                diffadd(var, delta_num, lbfd)
+
+            #change time to future
+            endtimestring = lbfd.time.units[-15:]
+            old_yyyy_timestamp = int(lbfd.time.units[-19:-15])
+            new_yyyy_timestamp = old_yyyy_timestamp + changeyears
+            lbfd.time.attrs['units'] = f'seconds since {new_yyyy_timestamp}{endtimestring}'
+
+            lbfd = computeQVnew(lbfd, delta_num, RH_old, RH_S_old)
+            print('QV done')
+
+            lbfd.to_netcdf(out_lbfd_file, mode='w')
+            lbfd.close()
+            print('save done')
+
+            # sanity check
+            print('sanity check..')
+            ds = xr.open_dataset(out_lbfd_file)
+            var_names = ['U','V','T','QV','PP','T_S','QV_S']
+            for var_name in var_names:
+                if np.sum(np.isnan(ds[var_name])).values > 0:
+                    ds.close()
+                    os.remove(out_lbfd_file)
+                    raise ValueError('File {} var {} broken!'.format(
+                                    out_lbfd_file, var_name))
+            ds.close()
+            print('..completed!')
         else:
-            variables = ['T', 'T_S', 'U', 'V', 'PP']
-        print('p done')
-
-        for var in variables:
-            print('add {}'.format(var))
-            diffadd(var, delta_num, lbfd)
-
-        #change time to future
-        endtimestring = lbfd.time.units[-15:]
-        old_yyyy_timestamp = int(lbfd.time.units[-19:-15])
-        new_yyyy_timestamp = old_yyyy_timestamp + changeyears
-        lbfd.time.attrs['units'] = f'seconds since {new_yyyy_timestamp}{endtimestring}'
-
-        lbfd = computeQVnew(lbfd, delta_num, RH_old, RH_S_old)
-        print('QV done')
-
-        lbfd.to_netcdf(out_lbfd_file, mode='w')
-        lbfd.close()
-        print('save done')
-
-        # sanity check
-        print('sanity check..')
-        ds = xr.open_dataset(out_lbfd_file)
-        var_names = ['U','V','T','QV','PP','T_S','QV_S']
-        for var_name in var_names:
-            if np.sum(np.isnan(ds[var_name])).values > 0:
-                ds.close()
-                os.remove(out_lbfd_file)
-                raise ValueError('File {} var {} broken!'.format(
-                                out_lbfd_file, var_name))
-        ds.close()
-        print('..completed!')
+            print('#############################################################')
+            print('ATTENTION: file {} does not exist. SKIPPING!'.format(inp_lbfd_file))
+            print('#############################################################')
 
 
 
@@ -320,35 +325,34 @@ if __name__ == "__main__":
     parser.add_argument('-l', '--last_dt', type=str, default='2006080121')
     # sim start date 
     parser.add_argument('-s', '--sim_start_date', type=str, default='20060801')
+    # sim name excluding ctrl/pgw
+    parser.add_argument('-n', '--sim_name_base', type=str, default='SA_3')
     args = parser.parse_args()
     print(args)
+
     #first_date = datetime.strptime(args.first_date, '%Y%m%d')
     #last_date = datetime.strptime(args.last_date, '%Y%m%d')
     first_dt = datetime.strptime(args.first_dt, '%Y%m%d%H')
     last_dt = datetime.strptime(args.last_dt, '%Y%m%d%H')
     sim_start_date = datetime.strptime(args.sim_start_date, '%Y%m%d')
+    sim_name_base = args.sim_name_base
 
     wd_path = '/scratch/snx3000/heimc/lmp/wd'
     changeyears = 0
-    Diffspath = '/scratch/snx3000/heimc/pgw/vertint_large3'
-    terrainpath = '/scratch/snx3000/heimc/pgw/constant_large3.nc'
+    #Diffspath = '/scratch/snx3000/heimc/pgw/vertint_{}_compr'.format(sim_name_base)
+    Diffspath = '/scratch/snx3000/heimc/pgw/vertint_{}'.format(sim_name_base)
+    terrainpath = '/scratch/snx3000/heimc/pgw/constant_{}.nc'.format(sim_name_base)
     recompute_pressure = True
 
     year = sim_start_date.year
     print(year)
 
-    #lbfdpath = os.path.join(wd_path, '06080100_SA_3_ctrl/int2lm_out/')
-    #terrainpath='/project/pr94/heimc/data/cosmo_out/SA_3_ctrl/lm_c/lffd20060801000000c.nc'
-    #terrainpath = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_ctrl/lm_coarse/lffd20060801000000c.nc'
-    #outputpath = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_pgw/int2lm_out/'
-
     lbfdpath = os.path.join(wd_path, 
-                    '{:%y%m%d}00_SA_3_ctrl/int2lm_out/'.format(sim_start_date))
-    #terrainpath = os.path.join(wd_path, 
-    #                '{:%y%m%d}00_SA_3_ctrl/lm_coarse/lffd{:%Y%m%d}000000c.nc'.format(
-    #                                                sim_start_date, sim_start_date))
+                    '{:%y%m%d}00_{}_ctrl/int2lm_out/'.format(
+                        sim_start_date, sim_name_base))
     outputpath = os.path.join(wd_path, 
-                    '{:%y%m%d}00_SA_3_pgw/int2lm_out/'.format(sim_start_date))
+                    '{:%y%m%d}00_{}_pgw/int2lm_out/'.format(
+                        sim_start_date, sim_name_base))
     print(lbfdpath)
     print(terrainpath)
     print(outputpath)

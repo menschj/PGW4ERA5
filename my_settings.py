@@ -84,13 +84,14 @@ if regridhori == True:
     ### Namelist
     ###########################################################################
     infolder = '/scratch/snx3000/heimc/pgw/interpolated/'
-    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_large3/'
+    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_SA_12/'
 
     n_out_time_steps = 366 * args.n_per_day
     out_grid_file = 'target_grid_OLD'
     out_grid_file = 'target_grid_interim2'
     out_grid_file = 'target_grid_large2'
     out_grid_file = 'target_grid_large3'
+    out_grid_file = 'target_grid_SA_12'
     ###########################################################################
 
     #get the python command and write a file to submit to the piz daint machine
@@ -108,22 +109,20 @@ regridvert = True
 if regridvert == True:
 
     #note that it it advised to create a height.txt (see example in repository)
-    #terrainpath = '/project/pr94/heimc/data/cosmo_out/SA_3_ctrl/lm_c/lffd20060801000000c.nc'
-    #terrainpath = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_ctrl/lm_coarse/lffd20060801000000c.nc'
-    terrainpath = '/scratch/snx3000/heimc/pgw/constant_large3.nc'
-    datapath = '/scratch/snx3000/heimc/pgw/regridded_large3/'
+    terrainpath = '/scratch/snx3000/heimc/pgw/constant_SA_12.nc'
+    datapath = '/scratch/snx3000/heimc/pgw/regridded_SA_12/'
     outvar_dict = {'hur':'RELHUM', 'ta':'T', 'ua':'U', 'va':'V'}
-    i_submit = 0
-    outputpath = '/scratch/snx3000/heimc/pgw/vertint_large3/'
+    i_submit = 1
+    outputpath = '/scratch/snx3000/heimc/pgw/vertint_SA_12/'
     submit_dir = '/scratch/snx3000/heimc/pgw/submit/'
     vcflat = 17827 #height where modellevels become flat
     n_out_time_steps = 366 * args.n_per_day
-    steps_per_job = 50 #split the job into multiple chucks and run in paralell
-    #starttime = 0
-    starttime = 1696
-    starttime = 1697
-    starttime = 1698
-    starttime = 1699
+    steps_per_job = 100 #split the job into multiple chucks and run in paralell
+    starttime = 0
+    #starttime = 1696
+    #starttime = 1697
+    #starttime = 1698
+    #starttime = 1699
 
     # copy heights file and script to submission directory
     if i_submit:
@@ -155,7 +154,7 @@ if regridvert == True:
                     rsh.write(f'''\
 #!/bin/bash -l
 #SBATCH --job-name="{var_name}_{start}"
-#SBATCH --time=23:30:00
+#SBATCH --time=01:00:00
 #SBATCH --partition=normal
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-core=1

@@ -49,26 +49,31 @@ parser = argparse.ArgumentParser(description =
 parser.add_argument('-d', '--delta_hour_inc', type=int, default=3)
 # sim start date 
 parser.add_argument('-s', '--sim_start_date', type=str, default='20060801')
+# sim name excluding ctrl/pgw
+parser.add_argument('-n', '--sim_name_base', type=str, default='SA_3')
 args = parser.parse_args()
 print(args)
-sim_start_date = datetime.strptime(args.sim_start_date, '%Y%m%d')
 
+sim_start_date = datetime.strptime(args.sim_start_date, '%Y%m%d')
+sim_name_base = args.sim_name_base
 wd_path = '/scratch/snx3000/heimc/lmp/wd'
 changeyears = 0
-Diffspath = '/scratch/snx3000/heimc/pgw/vertint_large3'
-terrainpath = '/scratch/snx3000/heimc/pgw/constant_large3.nc'
+#Diffspath = '/scratch/snx3000/heimc/pgw/vertint_{}_compr'.format(sim_name_base)
+Diffspath = '/scratch/snx3000/heimc/pgw/vertint_{}'.format(sim_name_base)
+terrainpath = '/scratch/snx3000/heimc/pgw/constant_{}.nc'.format(sim_name_base)
 recompute_pressure = True
 
 year = sim_start_date.year
 print(year)
 
 lafpath = os.path.join(wd_path, 
-        '{:%y%m%d}00_SA_3_ctrl/int2lm_out/laf{:%Y%m%d}000000.nc'.format(
-                    sim_start_date, sim_start_date))
+        '{:%y%m%d}00_{}_ctrl/int2lm_out/laf{:%Y%m%d}000000.nc'.format(
+                    sim_start_date, sim_name_base, sim_start_date))
 newyear = year + changeyears
 newtimestring = f'seconds since {newyear}-01-01 00:00:00'
 outputpath = os.path.join(wd_path, 
-                '{:%y%m%d}00_SA_3_pgw/int2lm_out/'.format(sim_start_date))
+                '{:%y%m%d}00_{}_pgw/int2lm_out/'.format(
+                    sim_start_date, sim_name_base))
 laftimestring = 'seconds since 2006-01-01 00:00:00'
 #init_dt = datetime(2006,8,1,0)
 init_dt = sim_start_date
@@ -77,19 +82,19 @@ print('use time step {}'.format(laftimestep))
 
 pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)
 output_laf_path = os.path.join(wd_path, 
-        '{:%y%m%d}00_SA_3_pgw/int2lm_out/laf{:%Y%m%d}000000.nc'.format(
-            pgw_sim_start_date, pgw_sim_start_date))
+        '{:%y%m%d}00_{}_pgw/int2lm_out/laf{:%Y%m%d}000000.nc'.format(
+            pgw_sim_start_date, sim_name_base, pgw_sim_start_date))
 
 
-if len(sys.argv)>5:
-    lafpath=str(sys.argv[1])
-    newyear=str(sys.argv[2])
-    newtimestring = str(sys.argv[6])
-    outputpath=str(sys.argv[3])
-    Diffspath=str(sys.argv[4])
-    terrainpath=str(sys.argv[5])
-    laftimestep=int(sys.argv[7])
-    recompute_pressure=bool(sys.argv[8])
+#if len(sys.argv)>5:
+#    lafpath=str(sys.argv[1])
+#    newyear=str(sys.argv[2])
+#    newtimestring = str(sys.argv[6])
+#    outputpath=str(sys.argv[3])
+#    Diffspath=str(sys.argv[4])
+#    terrainpath=str(sys.argv[5])
+#    laftimestep=int(sys.argv[7])
+#    recompute_pressure=bool(sys.argv[8])
 
 height_flat_half = xr.open_dataset(lafpath).vcoord #these are half levels
 height_flat = xr.open_dataset(lafpath).vcoord[:-1] #to fill with full levels

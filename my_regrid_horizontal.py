@@ -14,7 +14,7 @@ def run_remap_with_cdo_fix(grid_des_file, inp_file, out_file, method='bil'):
     # call cdo
     cdo_remap(grid_des_file, inp_file, out_file, method='bil')
     print('ATTENTION: fix cdo remapping issue is running!')
-    # for large grids cdo does not fill the rlon values.. (why???)
+    # for strange reason cdo does not fill the rlon values.. (why???)
     # therefore fix this
     ds = xr.open_dataset(out_file)
     ds = ds.assign_coords({'rlon':np.unique(ds.lon)}) 
