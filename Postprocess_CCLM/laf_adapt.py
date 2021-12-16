@@ -72,7 +72,7 @@ lafpath = os.path.join(wd_path,
 newyear = year + changeyears
 newtimestring = f'seconds since {newyear}-01-01 00:00:00'
 outputpath = os.path.join(wd_path, 
-                '{:%y%m%d}00_{}_pgw/int2lm_out/'.format(
+                '{:%y%m%d}00_{}_pgwnp/int2lm_out/'.format(
                     sim_start_date, sim_name_base))
 laftimestring = 'seconds since 2006-01-01 00:00:00'
 #init_dt = datetime(2006,8,1,0)
@@ -81,9 +81,9 @@ laftimestep = int(hour_of_year(init_dt)/args.delta_hour_inc)
 print('use time step {}'.format(laftimestep))
 
 pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)
-output_laf_path = os.path.join(wd_path, 
-        '{:%y%m%d}00_{}_pgw/int2lm_out/laf{:%Y%m%d}000000.nc'.format(
-            pgw_sim_start_date, sim_name_base, pgw_sim_start_date))
+output_laf_path = os.path.join(outputpath, 
+        'laf{:%Y%m%d}000000.nc'.format(pgw_sim_start_date))
+print(output_laf_path)
 
 
 #if len(sys.argv)>5:

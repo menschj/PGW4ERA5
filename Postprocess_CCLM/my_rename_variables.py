@@ -18,8 +18,10 @@ print(args)
 
 
 n_out_time_steps = 366 * args.n_per_day
-oldpath='/scratch/snx3000/heimc/pgw/regridded_SA_12/'
-newpath='/scratch/snx3000/heimc/pgw/vertint_SA_12/'
+#oldpath='/scratch/snx3000/heimc/pgw/regridded_SA_12/'
+#newpath='/scratch/snx3000/heimc/pgw/vertint_SA_12/'
+oldpath='/scratch/snx3000/heimc/pgw/regridded_SA_3/'
+newpath='/scratch/snx3000/heimc/pgw/vertint_SA_3/'
 
 iter_steps = np.arange(n_out_time_steps)
 #iter_steps = np.arange(1696,1954)

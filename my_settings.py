@@ -108,16 +108,19 @@ if regridhori == True:
 regridvert = True
 if regridvert == True:
 
-    #note that it it advised to create a height.txt (see example in repository)
-    terrainpath = '/scratch/snx3000/heimc/pgw/constant_SA_12.nc'
-    datapath = '/scratch/snx3000/heimc/pgw/regridded_SA_12/'
+    ##note that it it advised to create a height.txt (see example in repository)
+    #terrainpath = '/scratch/snx3000/heimc/pgw/constant_SA_12.nc'
+    #datapath = '/scratch/snx3000/heimc/pgw/regridded_SA_12/'
+    #outputpath = '/scratch/snx3000/heimc/pgw/vertint_SA_12/'
+    terrainpath = '/scratch/snx3000/heimc/pgw/constant_SA_3.nc'
+    datapath = '/scratch/snx3000/heimc/pgw/regridded_SA_3/'
+    outputpath = '/scratch/snx3000/heimc/pgw/vertint_SA_3/'
     outvar_dict = {'hur':'RELHUM', 'ta':'T', 'ua':'U', 'va':'V'}
     i_submit = 1
-    outputpath = '/scratch/snx3000/heimc/pgw/vertint_SA_12/'
     submit_dir = '/scratch/snx3000/heimc/pgw/submit/'
     vcflat = 17827 #height where modellevels become flat
     n_out_time_steps = 366 * args.n_per_day
-    steps_per_job = 100 #split the job into multiple chucks and run in paralell
+    steps_per_job = 300 #split the job into multiple chucks and run in paralell
     starttime = 0
     #starttime = 1696
     #starttime = 1697
@@ -127,8 +130,8 @@ if regridvert == True:
     # copy heights file and script to submission directory
     if i_submit:
         with cd(submit_dir):
-            subprocess.run('cp /users/heimc/phd_scripts/analyses/006_pgw/pgw-python/heights.txt .', shell=True)
-            subprocess.run('cp /users/heimc/phd_scripts/analyses/006_pgw/pgw-python/cclm_vertical.py .', shell=True)
+            subprocess.run('cp /project/pr94/heimc/lmp_template/submodules/pgw-python/heights.txt .', shell=True)
+            subprocess.run('cp /project/pr94/heimc/lmp_template/submodules/pgw-python/cclm_vertical.py .', shell=True)
 
     for var_name in var_names:
         print(var_name)
@@ -154,7 +157,7 @@ if regridvert == True:
                     rsh.write(f'''\
 #!/bin/bash -l
 #SBATCH --job-name="{var_name}_{start}"
-#SBATCH --time=01:00:00
+#SBATCH --time=23:00:00
 #SBATCH --partition=normal
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-core=1
