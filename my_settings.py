@@ -64,7 +64,9 @@ if performinterp == True:
     ### Namelist
     ###########################################################################
     #see documentation in interpolate.py
+    # run e.g. cdo sellonlatbox,-65,35,-45,30
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/GCMdata_SA/'
+    #gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/GCMdata/'
     gcm_data_freq = 'month'
 
     out_path = '/scratch/snx3000/heimc/pgw/interpolated/'
@@ -109,18 +111,18 @@ regridvert = True
 if regridvert == True:
 
     ##note that it it advised to create a height.txt (see example in repository)
-    #terrainpath = '/scratch/snx3000/heimc/pgw/constant_SA_12.nc'
-    #datapath = '/scratch/snx3000/heimc/pgw/regridded_SA_12/'
-    #outputpath = '/scratch/snx3000/heimc/pgw/vertint_SA_12/'
-    terrainpath = '/scratch/snx3000/heimc/pgw/constant_SA_3.nc'
-    datapath = '/scratch/snx3000/heimc/pgw/regridded_SA_3/'
-    outputpath = '/scratch/snx3000/heimc/pgw/vertint_SA_3/'
+    terrainpath = '/scratch/snx3000/heimc/pgw/constant_SA_12.nc'
+    datapath = '/scratch/snx3000/heimc/pgw/regridded_SA_12/'
+    outputpath = '/scratch/snx3000/heimc/pgw/vertint_SA_12/'
+    #terrainpath = '/scratch/snx3000/heimc/pgw/constant_SA_3.nc'
+    #datapath = '/scratch/snx3000/heimc/pgw/regridded_SA_3/'
+    #outputpath = '/scratch/snx3000/heimc/pgw/vertint_SA_3/'
     outvar_dict = {'hur':'RELHUM', 'ta':'T', 'ua':'U', 'va':'V'}
     i_submit = 1
     submit_dir = '/scratch/snx3000/heimc/pgw/submit/'
     vcflat = 17827 #height where modellevels become flat
     n_out_time_steps = 366 * args.n_per_day
-    steps_per_job = 300 #split the job into multiple chucks and run in paralell
+    steps_per_job = 200 #split the job into multiple chucks and run in paralell
     starttime = 0
     #starttime = 1696
     #starttime = 1697

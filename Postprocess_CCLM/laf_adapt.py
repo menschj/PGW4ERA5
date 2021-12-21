@@ -3,9 +3,13 @@ import sys, argparse
 from pathlib import Path
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
-from my_lbfd_adapt import hour_of_year, fix_grid_coord_diffs
+from my_lbfd_adapt import hour_of_year
+import matplotlib.pyplot as plt
 import numpy as np
 import os
+from functions import (get_alt_half_level, get_alt_full_level,
+        adjust_pressure_to_new_climate,  get_pref,
+        fix_grid_coord_diffs)
 """
 Can be used to add the calculated difference in all necessary variables to the initial condition (laf) file.
 This very fast, just run it in the console.
@@ -72,7 +76,7 @@ lafpath = os.path.join(wd_path,
 newyear = year + changeyears
 newtimestring = f'seconds since {newyear}-01-01 00:00:00'
 outputpath = os.path.join(wd_path, 
-                '{:%y%m%d}00_{}_pgwnp/int2lm_out/'.format(
+                '{:%y%m%d}00_{}_pgw2/int2lm_out/'.format(
                     sim_start_date, sim_name_base))
 laftimestring = 'seconds since 2006-01-01 00:00:00'
 #init_dt = datetime(2006,8,1,0)
@@ -86,16 +90,6 @@ output_laf_path = os.path.join(outputpath,
 print(output_laf_path)
 
 
-#if len(sys.argv)>5:
-#    lafpath=str(sys.argv[1])
-#    newyear=str(sys.argv[2])
-#    newtimestring = str(sys.argv[6])
-#    outputpath=str(sys.argv[3])
-#    Diffspath=str(sys.argv[4])
-#    terrainpath=str(sys.argv[5])
-#    laftimestep=int(sys.argv[7])
-#    recompute_pressure=bool(sys.argv[8])
-
 height_flat_half = xr.open_dataset(lafpath).vcoord #these are half levels
 height_flat = xr.open_dataset(lafpath).vcoord[:-1] #to fill with full levels
 vcflat=xr.open_dataset(lafpath).vcoord.vcflat
@@ -104,44 +98,6 @@ vcflat=xr.open_dataset(lafpath).vcoord.vcflat
 height_flat.data = height_flat_half.data[1:] + \
 (0.5 * (height_flat_half.data[:-1] - height_flat_half.data[1:]) )
 
-
-#get reference pressure function
-def getpref(vcflat, terrainpath, height_flat):
-    smoothing = (vcflat - height_flat) / vcflat
-    smoothing = np.where(smoothing > 0, smoothing, 0)
-
-    const = xr.open_dataset(terrainpath)
-    hsurf = const['HSURF'].squeeze()
-
-    #the height at which the reference pressure needs to be computed needs to be derived form the terrain   following coordinates:
-    newheights = np.zeros((len(height_flat), hsurf.shape[0], hsurf.shape[1]))
-
-    #avoid forloop
-    newheights = height_flat.values[:,None,None] + hsurf.values[None,:,:] * smoothing[:,None,None]
-
-    #New formulation as researched by Christian Steger (untested)
-    # Constants
-    p0sl = height_flat.p0sl # sea-level pressure [Pa]
-    t0sl = height_flat.t0sl   # sea-level temperature [K]
-    # Source: COSMO description Part I, page 29
-    g = 9.80665     # gravitational acceleration [m s-2]
-    R_d = 287.05    # gas constant for dry air [J K-1 kg-1]
-    # Source: COSMO source code, data_constants.f90
-
-    # irefatm = 2
-    delta_t = height_flat.delta_t
-    h_scal = height_flat.h_scal
-    # Source: COSMO description Part VII, page 66
-    t00 = t0sl - delta_t
-
-    pref = p0sl * np.exp (-g / R_d * h_scal / t00 * \
-               np.log((np.exp(newheights / h_scal) * t00 + delta_t) / \
-                      (t00 + delta_t)) )
-    pref_sfc = p0sl * np.exp (-g / R_d * h_scal / t00 * \
-               np.log((np.exp(hsurf.data / h_scal) * t00 + delta_t) / \
-                      (t00 + delta_t)) )
-
-    return pref, pref_sfc, newheights
 
 
 
@@ -157,6 +113,18 @@ def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep,
 
     #if output directory doesn't exist create it
     Path(outputpath).mkdir(parents=True, exist_ok=True)
+
+    #print(lafpath)
+    #print(output_laf_path)
+    #print(outputpath)
+    #print(Diffspath)
+    #print(laftimestep)
+    #print(newtimestring)
+    #print(pref.shape)
+    #print(pref_sfc.shape)
+    #print(height_array.shape)
+    #print(recompute_pressure)
+
 
     def comprelhums(laffile, pref, pref_sfc):
         p = laffile['PP'] + pref
@@ -189,6 +157,16 @@ def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep,
             laffile[var].data = (laffile[var].data + 
                                 Diff.data.astype('float32'))
         #quit()
+
+
+
+
+
+
+
+
+
+
 
 
     def pressure_recompute(laf_file, pref, height_array, height_flat):
@@ -294,8 +272,21 @@ def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep,
     RH_old, RH_S_old = comprelhums(laffile, pref, pref_sfc)
     print('rh done')
 
+    ## OLD VERSION Roman Brogli
+    #if recompute_pressure == True:
+    #    laffile = pressure_recompute(laffile, pref, height_array, height_flat)
+    #    variables = ['T', 'T_S', 'U', 'V']
+    #else:
+    #    variables = ['T', 'T_S', 'U', 'V' ,'PP']
+
+    ## HCH2021 Updated pressure computation using hydrostatic equation
     if recompute_pressure == True:
-        laffile = pressure_recompute(laffile, pref, height_array, height_flat)
+        vcoord = xr.open_dataset(terrainpath).vcoord
+        alt_half_level = get_alt_half_level(vcoord, terrainpath)
+        alt_full_level = get_alt_full_level(alt_half_level)
+        laffile = adjust_pressure_to_new_climate(Diffspath, laftimestep,
+                                laffile, 
+                                pref, alt_half_level, alt_full_level)
         variables = ['T', 'T_S', 'U', 'V']
     else:
         variables = ['T', 'T_S', 'U', 'V' ,'PP']
@@ -319,6 +310,6 @@ def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep,
 
 
 
-pref, pref_sfc, height_array = getpref(vcflat, terrainpath, height_flat)
+pref, pref_sfc, height_array = get_pref(vcflat, terrainpath, height_flat)
 lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep, newtimestring,
         pref, pref_sfc, height_array, recompute_pressure)

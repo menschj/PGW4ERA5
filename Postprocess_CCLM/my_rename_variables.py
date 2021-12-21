@@ -24,7 +24,7 @@ oldpath='/scratch/snx3000/heimc/pgw/regridded_SA_3/'
 newpath='/scratch/snx3000/heimc/pgw/vertint_SA_3/'
 
 iter_steps = np.arange(n_out_time_steps)
-#iter_steps = np.arange(1696,1954)
+iter_steps = np.arange(1696,1954)
 
 ## DEBUG
 #iter_steps = iter_steps[2494:]

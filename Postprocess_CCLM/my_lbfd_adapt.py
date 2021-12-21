@@ -6,6 +6,9 @@ from pathlib import Path
 import numpy as np
 from datetime import datetime,timedelta
 from dateutil.relativedelta import relativedelta
+from functions import (get_alt_half_level, get_alt_full_level,
+        adjust_pressure_to_new_climate,  get_pref,
+        fix_grid_coord_diffs)
 
 """
 Add the calculated difference in all necessary variables to the boundary condition (lbfd) files for one year.
@@ -48,55 +51,46 @@ def hour_of_year(dt):
     return(int((dt - beginning_of_year).total_seconds() // 3600))
 
 
-def fix_grid_coord_diffs(fix_ds, ref_ds):
-    ### There may be small grid inconsistencies that have to be fixed... 
-    ### the reason is that the cdo remapping produes them.
-    if np.max(np.abs(fix_ds.rlon.values - ref_ds.rlon.values)) > 1E-5:
-        raise ValueError('Grids differ!')
-    if np.mean(np.abs(fix_ds.rlon.values - ref_ds.rlon.values)) > 1E-8:
-        print('fix small differences in inputs grids.')
-        fix_ds['rlon'] = ref_ds.rlon
-        fix_ds['rlat'] = ref_ds.rlat
 
 
-#get reference pressure function
-def getpref(vcflat, terrainpath, height_flat):
-    smoothing = (vcflat - height_flat) / vcflat
-    smoothing = np.where(smoothing > 0, smoothing, 0)
-
-    const = xr.open_dataset(terrainpath)
-
-    hsurf = const['HSURF'].squeeze()
-
-    #the height at which the reference pressure needs to be computed needs to be derived form the terrain   following coordinates:
-    newheights = np.zeros((len(height_flat), hsurf.shape[0], hsurf.shape[1]))
-
-    #avoid forloop
-    newheights = height_flat.values[:,None,None] + hsurf.values[None,:,:] * smoothing[:,None,None]
-
-    #New formulation as researched by Christian Steger (untested)
-    # Constants
-    p0sl = height_flat.p0sl # sea-level pressure [Pa]
-    t0sl = height_flat.t0sl   # sea-level temperature [K]
-    # Source: COSMO description Part I, page 29
-    g = 9.80665     # gravitational acceleration [m s-2]
-    R_d = 287.05    # gas constant for dry air [J K-1 kg-1]
-    # Source: COSMO source code, data_constants.f90
-
-    # irefatm = 2
-    delta_t = height_flat.delta_t
-    h_scal = height_flat.h_scal
-    # Source: COSMO description Part VII, page 66
-    t00 = t0sl - delta_t
-
-    pref = p0sl * np.exp (-g / R_d * h_scal / t00 * \
-               np.log((np.exp(newheights / h_scal) * t00 + delta_t) / \
-                      (t00 + delta_t)) )
-    pref_sfc = p0sl * np.exp (-g / R_d * h_scal / t00 * \
-               np.log((np.exp(hsurf.data / h_scal) * t00 + delta_t) / \
-                      (t00 + delta_t)) )
-
-    return pref, pref_sfc, newheights
+##get reference pressure function
+#def getpref(vcflat, terrainpath, height_flat):
+#    smoothing = (vcflat - height_flat) / vcflat
+#    smoothing = np.where(smoothing > 0, smoothing, 0)
+#
+#    const = xr.open_dataset(terrainpath)
+#
+#    hsurf = const['HSURF'].squeeze()
+#
+#    #the height at which the reference pressure needs to be computed needs to be derived form the terrain   following coordinates:
+#    newheights = np.zeros((len(height_flat), hsurf.shape[0], hsurf.shape[1]))
+#
+#    #avoid forloop
+#    newheights = height_flat.values[:,None,None] + hsurf.values[None,:,:] * smoothing[:,None,None]
+#
+#    #New formulation as researched by Christian Steger (untested)
+#    # Constants
+#    p0sl = height_flat.p0sl # sea-level pressure [Pa]
+#    t0sl = height_flat.t0sl   # sea-level temperature [K]
+#    # Source: COSMO description Part I, page 29
+#    g = 9.80665     # gravitational acceleration [m s-2]
+#    R_d = 287.05    # gas constant for dry air [J K-1 kg-1]
+#    # Source: COSMO source code, data_constants.f90
+#
+#    # irefatm = 2
+#    delta_t = height_flat.delta_t
+#    h_scal = height_flat.h_scal
+#    # Source: COSMO description Part VII, page 66
+#    t00 = t0sl - delta_t
+#
+#    pref = p0sl * np.exp (-g / R_d * h_scal / t00 * \
+#               np.log((np.exp(newheights / h_scal) * t00 + delta_t) / \
+#                      (t00 + delta_t)) )
+#    pref_sfc = p0sl * np.exp (-g / R_d * h_scal / t00 * \
+#               np.log((np.exp(hsurf.data / h_scal) * t00 + delta_t) / \
+#                      (t00 + delta_t)) )
+#
+#    return pref, pref_sfc, newheights
 
 
 
@@ -242,12 +236,25 @@ def lbfdadapt(lbfdpath, outputpath, Diffspath, lbfd_dts, delta_hour_inc,
             RH_old, RH_S_old = comprelhums(lbfd, pref, pref_sfc)
             print('RH done')
 
+            ## OLD VERSION Roman Brogli
+            #if recompute_pressure == True:
+            #    lbfd = pressure_recompute(lbfd, delta_num, pref, dz, height_flat)
+            #    variables = ['T', 'T_S', 'U', 'V']
+            #else:
+            #    variables = ['T', 'T_S', 'U', 'V', 'PP']
+
+            ## HCH2021 Updated pressure computation using hydrostatic equation
             if recompute_pressure == True:
-                lbfd = pressure_recompute(lbfd, delta_num, pref, dz, height_flat)
+                vcoord = xr.open_dataset(terrainpath).vcoord
+                alt_half_level = get_alt_half_level(vcoord, terrainpath)
+                alt_full_level = get_alt_full_level(alt_half_level)
+                lbfd = adjust_pressure_to_new_climate(Diffspath, delta_num,
+                                        lbfd, 
+                                        pref, alt_half_level, alt_full_level)
                 variables = ['T', 'T_S', 'U', 'V']
             else:
-                variables = ['T', 'T_S', 'U', 'V', 'PP']
-            print('p done')
+                variables = ['T', 'T_S', 'U', 'V' ,'PP']
+            print('pressure done')
 
             for var in variables:
                 print('add {}'.format(var))
@@ -304,7 +311,7 @@ def workflow_lbfd(lbfdpath, outputpath, Diffspath,
     height_flat.data = height_flat_half.data[1:] + \
     (0.5 * (height_flat_half.data[:-1] - height_flat_half.data[1:]) )
     
-    pref, pref_sfc, height_array = getpref(vcflat, terrainpath, height_flat)
+    pref, pref_sfc, height_array = get_pref(vcflat, terrainpath, height_flat)
     dz = height_array[:-1] - height_array[1:] #get height difference between model levels
     lbfdadapt(lbfdpath, outputpath, Diffspath, lbfd_dts, delta_hour_inc,
             changeyears, pref,
@@ -322,7 +329,7 @@ if __name__ == "__main__":
     # first date 
     parser.add_argument('-f', '--first_dt', type=str, default='2006080100')
     # last date 
-    parser.add_argument('-l', '--last_dt', type=str, default='2006080121')
+    parser.add_argument('-l', '--last_dt', type=str, default='2006090100')
     # sim start date 
     parser.add_argument('-s', '--sim_start_date', type=str, default='20060801')
     # sim name excluding ctrl/pgw
@@ -351,7 +358,7 @@ if __name__ == "__main__":
                     '{:%y%m%d}00_{}_ctrl/int2lm_out/'.format(
                         sim_start_date, sim_name_base))
     outputpath = os.path.join(wd_path, 
-                    '{:%y%m%d}00_{}_pgw/int2lm_out/'.format(
+                    '{:%y%m%d}00_{}_pgw2/int2lm_out/'.format(
                         sim_start_date, sim_name_base))
     print(lbfdpath)
     print(terrainpath)

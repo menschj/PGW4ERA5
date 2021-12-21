@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #
 #SBATCH --job-name="prep pgw"
-#SBATCH --time=03:00:00
+#SBATCH --time=00:30:00
 #SBATCH --cpus-per-task=12
 #SBATCH --partition=normal
 #SBATCH --output=/scratch/snx3000/heimc/pgw/out_scripts/out0
@@ -19,7 +19,7 @@ echo -e "$SLURM_JOB_NAME started on $(date):\n $command $1 $2\n"
 
 var_names=hur,hurs,ta,tas,ua,va
 #var_names=hur
-#var_names=ta
+var_names=ta
 #var_names=ua
 #var_names=va
 #var_names=tas
