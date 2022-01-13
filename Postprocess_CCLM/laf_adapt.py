@@ -46,63 +46,11 @@ Output:
 	The adapted laf file will be written to the chosen location and should directly be usable for CCLM.
 """
 
-## input arguments
-parser = argparse.ArgumentParser(description =
-                'Perturb COSMO initial condition with PGW climate deltas.')
-# delta hour increments
-parser.add_argument('-d', '--delta_hour_inc', type=int, default=3)
-# sim start date 
-parser.add_argument('-s', '--sim_start_date', type=str, default='20060801')
-# sim name excluding ctrl/pgw
-parser.add_argument('-n', '--sim_name_base', type=str, default='SA_3')
-args = parser.parse_args()
-print(args)
-
-sim_start_date = datetime.strptime(args.sim_start_date, '%Y%m%d')
-sim_name_base = args.sim_name_base
-wd_path = '/scratch/snx3000/heimc/lmp/wd'
-changeyears = 0
-#Diffspath = '/scratch/snx3000/heimc/pgw/vertint_{}_compr'.format(sim_name_base)
-Diffspath = '/scratch/snx3000/heimc/pgw/vertint_{}'.format(sim_name_base)
-terrainpath = '/scratch/snx3000/heimc/pgw/constant_{}.nc'.format(sim_name_base)
-recompute_pressure = True
-
-year = sim_start_date.year
-print(year)
-
-lafpath = os.path.join(wd_path, 
-        '{:%y%m%d}00_{}_ctrl/int2lm_out/laf{:%Y%m%d}000000.nc'.format(
-                    sim_start_date, sim_name_base, sim_start_date))
-newyear = year + changeyears
-newtimestring = f'seconds since {newyear}-01-01 00:00:00'
-outputpath = os.path.join(wd_path, 
-                '{:%y%m%d}00_{}_pgw2/int2lm_out/'.format(
-                    sim_start_date, sim_name_base))
-laftimestring = 'seconds since 2006-01-01 00:00:00'
-#init_dt = datetime(2006,8,1,0)
-init_dt = sim_start_date
-laftimestep = int(hour_of_year(init_dt)/args.delta_hour_inc)
-print('use time step {}'.format(laftimestep))
-
-pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)
-output_laf_path = os.path.join(outputpath, 
-        'laf{:%Y%m%d}000000.nc'.format(pgw_sim_start_date))
-print(output_laf_path)
-
-
-height_flat_half = xr.open_dataset(lafpath).vcoord #these are half levels
-height_flat = xr.open_dataset(lafpath).vcoord[:-1] #to fill with full levels
-vcflat=xr.open_dataset(lafpath).vcoord.vcflat
-
-#get the full level height
-height_flat.data = height_flat_half.data[1:] + \
-(0.5 * (height_flat_half.data[:-1] - height_flat_half.data[1:]) )
-
 
 
 
 def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep, 
-            newtimestring, pref, pref_sfc, height_array, recompute_pressure):
+            newtimestring, alt_hl, alt, pref_hl, pref, recompute_pressure):
 
     laffile = xr.open_dataset(lafpath, decode_cf=False)
 
@@ -114,24 +62,13 @@ def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep,
     #if output directory doesn't exist create it
     Path(outputpath).mkdir(parents=True, exist_ok=True)
 
-    #print(lafpath)
-    #print(output_laf_path)
-    #print(outputpath)
-    #print(Diffspath)
-    #print(laftimestep)
-    #print(newtimestring)
-    #print(pref.shape)
-    #print(pref_sfc.shape)
-    #print(height_array.shape)
-    #print(recompute_pressure)
 
-
-    def comprelhums(laffile, pref, pref_sfc):
+    def comprelhums(laffile, pref_hl, pref):
         p = laffile['PP'] + pref
         QV = laffile['QV']
         T = laffile['T']
 
-        p_sfc = laffile['PP'][:,-1,:,:] + pref_sfc
+        p_sfc = laffile['PP'][:,-1,:,:] + pref_hl.isel(level1=-1)
         QV_S = laffile['QV_S']
         T_S = laffile['T_S']
 
@@ -169,76 +106,7 @@ def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep,
 
 
 
-    def pressure_recompute(laf_file, pref, height_array, height_flat):
-        #function to compute pressure field in a differen climate using the barometric
-        #formula (maintaining hydrostatic balance)
-        #temperature changes
-        dT_sfc = xr.open_dataset(f'{Diffspath}/T_S{laftimestep:05d}.nc')['T_S']
-        dT_atmos = xr.open_dataset(f'{Diffspath}/T{laftimestep:05d}.nc')['T']
-        ## HCH2021 start
-        ## There are small grid inconsistencies that have to be fixed... 
-        fix_grid_coord_diffs(dT_sfc, laf_file)
-        fix_grid_coord_diffs(dT_atmos, laf_file)
-        ## HCH 2021 stop
 
-        #get pressure field
-        pressure_original = laffile['PP'] + pref
-        pressure_new = pressure_original.copy()
-
-        #get height difference between model levels
-        dz = height_array[:-1] - height_array[1:]
-        #print(dz.shape)
-        #quit()
-
-        temperature = laffile['T']
-        sfc_temperature = laffile['T_S']
-
-        #define barometric height formula
-        def barometric(reference_pressure, reference_temperature, dz, lapse_rate):
-            R = 8.3144598 #universal gas constant
-            M = 0.0289644 # molar mass of air #standard lapse rate
-            g = 9.80665
-            #lapse_rate = - 0.0065
-            exo = - g * M / (R * lapse_rate) #exponent in barometric formula
-
-            #print(reference_pressure.shape)
-            #print(reference_temperature.shape)
-            #print(dz)
-            #print('stop')
-            #quit()
-            pressure = reference_pressure * ( (reference_temperature + \
-            (lapse_rate * dz)) / reference_temperature )**exo
-
-            return pressure
-
-        #print('start')
-        #print(temperature.shape)
-        #print(height_flat.shape)
-
-        #print(temperature[:,-1,:,:].shape)
-        #print(height_flat[-1].shape)
-
-        #compute surface pressure
-        surface_press = barometric(pressure_original[:,-1,:,:], temperature[:,-1,:,:], -height_flat[-1], 0.0065)
-
-        #print('start')
-        #print(sfc_temperature.shape)
-        #print(dT_sfc.shape)
-        #print((sfc_temperature+dT_sfc).shape)
-        #quit()
-
-        #get the lowest model level in warmer climate
-        pressure_new[:,-1,:,:] = barometric(surface_press, sfc_temperature+dT_sfc, height_flat[-1], -0.0065)
-        #get the rest (loop from ground up)
-        for level in range(len(dz)-1, -1, -1):
-                pressure_new[:,level,:,:] = barometric(pressure_new[:,level+1,:,:], \
-                temperature[:,level+1,:,:]+dT_atmos[level+1,:,:], dz[level,:,:], -0.0065)
-
-        new_pp = pressure_new.data - pref
-        #convert to PP
-        laffile['PP'].data = new_pp.astype('float32')
-
-        return laffile
 
 
     #compute new humidity funcion once temperature and pressure were changed
@@ -269,7 +137,7 @@ def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep,
 
 
     #get relative humidity in old laf
-    RH_old, RH_S_old = comprelhums(laffile, pref, pref_sfc)
+    RH_old, RH_S_old = comprelhums(laffile, pref_hl, pref)
     print('rh done')
 
     ## OLD VERSION Roman Brogli
@@ -281,12 +149,9 @@ def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep,
 
     ## HCH2021 Updated pressure computation using hydrostatic equation
     if recompute_pressure == True:
-        vcoord = xr.open_dataset(terrainpath).vcoord
-        alt_half_level = get_alt_half_level(vcoord, terrainpath)
-        alt_full_level = get_alt_full_level(alt_half_level)
         laffile = adjust_pressure_to_new_climate(Diffspath, laftimestep,
                                 laffile, 
-                                pref, alt_half_level, alt_full_level)
+                                alt_hl, alt, pref_hl, pref)
         variables = ['T', 'T_S', 'U', 'V']
     else:
         variables = ['T', 'T_S', 'U', 'V' ,'PP']
@@ -310,6 +175,81 @@ def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep,
 
 
 
-pref, pref_sfc, height_array = get_pref(vcflat, terrainpath, height_flat)
-lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep, newtimestring,
-        pref, pref_sfc, height_array, recompute_pressure)
+
+
+
+
+if __name__ == "__main__":
+
+    ## input arguments
+    parser = argparse.ArgumentParser(description =
+                    'Perturb COSMO initial condition with PGW climate deltas.')
+    # delta hour increments
+    parser.add_argument('-d', '--delta_hour_inc', type=int, default=3)
+    # sim start date 
+    parser.add_argument('-s', '--sim_start_date', type=str, default='20060801')
+    # sim name excluding ctrl/pgw
+    parser.add_argument('-n', '--sim_name_base', type=str, default='SA_3')
+    args = parser.parse_args()
+    print(args)
+
+    sim_start_date = datetime.strptime(args.sim_start_date, '%Y%m%d')
+    sim_name_base = args.sim_name_base
+    wd_path = '/scratch/snx3000/heimc/lmp/wd'
+    changeyears = 0
+    #Diffspath = '/scratch/snx3000/heimc/pgw/vertint_{}_compr'.format(sim_name_base)
+    Diffspath = '/scratch/snx3000/heimc/pgw/vertint_{}'.format(sim_name_base)
+    terrainpath = '/scratch/snx3000/heimc/pgw/constant_{}.nc'.format(sim_name_base)
+    recompute_pressure = True
+
+    year = sim_start_date.year
+    print(year)
+
+    lafpath = os.path.join(wd_path, 
+            '{:%y%m%d}00_{}_ctrl/int2lm_out/laf{:%Y%m%d}000000.nc'.format(
+                        sim_start_date, sim_name_base, sim_start_date))
+    newyear = year + changeyears
+    newtimestring = f'seconds since {newyear}-01-01 00:00:00'
+    outputpath = os.path.join(wd_path, 
+                    '{:%y%m%d}00_{}_pgw2/int2lm_out/'.format(
+                        sim_start_date, sim_name_base))
+    laftimestring = 'seconds since 2006-01-01 00:00:00'
+    #init_dt = datetime(2006,8,1,0)
+    init_dt = sim_start_date
+    laftimestep = int(hour_of_year(init_dt)/args.delta_hour_inc)
+    print('use time step {}'.format(laftimestep))
+
+    pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)
+    output_laf_path = os.path.join(outputpath, 
+            'laf{:%Y%m%d}000000.nc'.format(pgw_sim_start_date))
+    print(output_laf_path)
+
+
+    #height_flat_hl = xr.open_dataset(lafpath).vcoord #these are half levels
+    #height_flat = xr.open_dataset(lafpath).vcoord[:-1] #to fill with full levels
+    #vcflat=xr.open_dataset(lafpath).vcoord.vcflat
+
+    ##get the full level height
+    #height_flat.data = height_flat_hl.data[1:] + \
+    #(0.5 * (height_flat_hl.data[:-1] - height_flat_hl.data[1:]) )
+
+    vcoord = xr.open_dataset(lafpath).vcoord
+
+    alt_hl = get_alt_half_level(vcoord, terrainpath)
+    alt = get_alt_full_level(alt_hl)
+
+    ## old version
+    #pref_hl, pref_sfc, height_array = get_pref(vcflat, terrainpath, height_flat_hl)
+    #pref, pref_sfc, height_array = get_pref(vcflat, terrainpath, height_flat)
+
+    pref_hl = get_pref(vcoord, terrainpath, 'hl')
+    pref = get_pref(vcoord, terrainpath, 'fl')
+    #print(pref.mean(axis=(1,2)))
+    #print(pref_hl.mean(axis=(1,2)))
+    #plt.plot(pref_hl.mean(axis=(1,2)), alt_hl.mean(axis=(1,2)))
+    #plt.plot(pref.mean(axis=(1,2)), alt.mean(axis=(1,2)))
+    #plt.show()
+    #quit()
+
+    lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep, newtimestring,
+            alt_hl, alt, pref_hl, pref, recompute_pressure)

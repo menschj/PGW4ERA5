@@ -118,7 +118,7 @@ if regridvert == True:
     #datapath = '/scratch/snx3000/heimc/pgw/regridded_SA_3/'
     #outputpath = '/scratch/snx3000/heimc/pgw/vertint_SA_3/'
     outvar_dict = {'hur':'RELHUM', 'ta':'T', 'ua':'U', 'va':'V'}
-    i_submit = 1
+    i_submit = 0
     submit_dir = '/scratch/snx3000/heimc/pgw/submit/'
     vcflat = 17827 #height where modellevels become flat
     n_out_time_steps = 366 * args.n_per_day
