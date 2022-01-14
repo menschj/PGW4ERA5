@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #
 #SBATCH --job-name="prep pgw"
-#SBATCH --time=12:00:00
+#SBATCH --time=03:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --partition=normal
 #SBATCH --output=/scratch/snx3000/heimc/pgw/out_scripts/out0
@@ -17,7 +17,7 @@ var_names=ta,hur,pa,ua,va,tas,hurs
 #var_names=ta,hur,pa,ua,va
 #var_names=ta
 #var_names=hur
-#var_names=pa
+var_names=pa
 #var_names=ua
 #var_names=va
 #var_names=tas

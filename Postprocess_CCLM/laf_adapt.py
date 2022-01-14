@@ -3,26 +3,29 @@ import sys, argparse
 from pathlib import Path
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
-from my_lbfd_adapt import hour_of_year
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-from base.functions import (get_alt_half_level, get_alt_full_level,
-        adjust_pressure_to_new_climate,  get_pref,
-        fix_grid_coord_diffs)
+from base.functions import (
+        hour_of_year,
+        get_alt_half_level, get_alt_full_level,
+        pressure_recompute, get_pref_old,
+        adjust_pressure_to_new_climate, 
+        get_pref, get_pref_sfc,
+        fix_grid_coord_diffs, add_delta)
 """
 Can be used to add the calculated difference in all necessary variables to the initial condition (laf) file.
 This very fast, just run it in the console.
 It requires the difference in relative humidity to adapt the specific humidity!
 
 Input:
-	lafpath: Path to the original laf-file from the "base" simulation
+	inp_laf_path: Path to the original laf-file from the "base" simulation
 	(e.g. reanalysis driven or historical simulation). The name of the laf file
 	must be as outputted by int2lm (e.g. laf1970010100.nc ).
 
 	newyear: What year to use in the files (change it to the future to adapt CO2 levels)
 
-	laftimestep: Which timestep within the annual cycle is apropriate to adapt
+	delta_time_step: Which timestep within the annual cycle is apropriate to adapt
 	the laf file? (0 for beginning of year; otherwise dayofyear*timesteps_per_day)
 
 	newtimestring: What timestamp should be used for the adapted laf file?
@@ -49,20 +52,11 @@ Output:
 
 
 
-def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep, 
-            newtimestring, alt_hl, alt, pref_hl, pref, recompute_pressure):
-
-    laffile = xr.open_dataset(lafpath, decode_cf=False)
-
-    print('load done')
-    #print('time' in laffile['T'].dims)
-    #print(laffile['T'])
-    #quit()
-
-    #if output directory doesn't exist create it
-    Path(outputpath).mkdir(parents=True, exist_ok=True)
+def lafadapt(inp_laf_path, out_laf_path, Diffspath, delta_time_step, 
+            newtimestring, alt_hl, alt, pref_hl, pref, pref_sfc, recompute_pressure):
 
 
+    #function to calculate relative humidity
     def comprelhums(laffile, pref_hl, pref):
         p = laffile['PP'] + pref
         QV = laffile['QV']
@@ -78,41 +72,10 @@ def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep,
         return RH, RH_S
 
 
-    def diffadd(var, laffile=laffile):
-        Diff = xr.open_dataset(
-                    f'{Diffspath}/{var}{laftimestep:05d}.nc')[var]
-        ## HCH2021 start
-        ## There are small grid inconsistencies that have to be fixed... 
-        fix_grid_coord_diffs(Diff, laffile)
-        fix_grid_coord_diffs(Diff, laffile)
-        ## HCH 2021 stop
-
-        if 'time' in laffile[var].dims:
-            laffile[var].data[0,::] = (laffile[var].data[0,::] + 
-                                Diff.data.astype('float32'))
-        else:
-            laffile[var].data = (laffile[var].data + 
-                                Diff.data.astype('float32'))
-        #quit()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     #compute new humidity funcion once temperature and pressure were changed
     def computeQVnew(laffile, RH_old, RH_S_old):
-        Diffrh = xr.open_dataset(f'{Diffspath}/RELHUM{laftimestep:05d}.nc')['RELHUM']
-        Diffrh_s = xr.open_dataset(f'{Diffspath}/RELHUM_S{laftimestep:05d}.nc')['RELHUM_S']
+        Diffrh = xr.open_dataset(f'{Diffspath}/RELHUM{delta_time_step:05d}.nc')['RELHUM']
+        Diffrh_s = xr.open_dataset(f'{Diffspath}/RELHUM_S{delta_time_step:05d}.nc')['RELHUM_S']
         ### HCH2021 start
         ### There are small grid inconsistencies that have to be fixed... 
         fix_grid_coord_diffs(Diffrh, laffile)
@@ -124,7 +87,8 @@ def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep,
 
         p = laffile['PP'] + pref
         T = laffile['T']
-        p_sfc = np.squeeze(laffile['PP'][:,-1,:,:]) + pref_sfc
+        #p_sfc = np.squeeze(laffile['PP'][:,-1,:,:]) + pref_sfc
+        p_sfc = np.squeeze(laffile['PP'][:,-1,:,:]) + pref_hl.isel(level1=-1)
         T_S = laffile['T_S']
 
         newQV = (newRH.data  * np.exp(17.67*(T.data  - 273.15)/(T.data -29.65))) / ( 0.263 * p.data)
@@ -136,31 +100,40 @@ def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep,
         return laffile
 
 
+    laffile = xr.open_dataset(inp_laf_path, decode_cf=False)
+
+    print('load done')
+    #print('time' in laffile['T'].dims)
+    #print(laffile['T'])
+    #quit()
+
     #get relative humidity in old laf
     RH_old, RH_S_old = comprelhums(laffile, pref_hl, pref)
     print('rh done')
 
-    ## OLD VERSION Roman Brogli
-    #if recompute_pressure == True:
-    #    laffile = pressure_recompute(laffile, pref, height_array, height_flat)
-    #    variables = ['T', 'T_S', 'U', 'V']
-    #else:
-    #    variables = ['T', 'T_S', 'U', 'V' ,'PP']
+    ### Adjust pressure
+    # OLD VERSION Roman Brogli
+    if recompute_pressure == 'barometric':
+        raise NotImplementedError()
+        laffile = pressure_recompute(laffile, pref, height_array, height_flat)
+        variables = ['T', 'T_S', 'U', 'V']
 
     ## HCH2021 Updated pressure computation using hydrostatic equation
-    if recompute_pressure == True:
-        laffile = adjust_pressure_to_new_climate(Diffspath, laftimestep,
+    elif recompute_pressure == 'hydrostatic':
+        laffile = adjust_pressure_to_new_climate(Diffspath, delta_time_step,
                                 laffile, 
                                 alt_hl, alt, pref_hl, pref)
         variables = ['T', 'T_S', 'U', 'V']
-    else:
+    elif recompute_pressure == False:
         variables = ['T', 'T_S', 'U', 'V' ,'PP']
+    else:
+        raise ValueError()
     print('pressure done')
 
     #change other variables
     for var in variables:
         print('add {}'.format(var))
-        diffadd(var, laffile)
+        add_delta(var, laffile, Diffspath, delta_time_step)
 
     laffile.time.attrs['units'] = newtimestring
     laffile['time'].data[0] = 0
@@ -169,9 +142,9 @@ def lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep,
     laffile = computeQVnew(laffile, RH_old, RH_S_old)
     print('moisture')
 
-    laffile.to_netcdf(output_laf_path, mode='w')
+    laffile.to_netcdf(out_laf_path, mode='w')
     laffile.close()
-    print(f'saved {output_laf_path}')
+    print(f'saved {out_laf_path}')
 
 
 
@@ -197,53 +170,66 @@ if __name__ == "__main__":
     sim_name_base = args.sim_name_base
     wd_path = '/scratch/snx3000/heimc/lmp/wd'
     changeyears = 0
-    #Diffspath = '/scratch/snx3000/heimc/pgw/vertint_{}_compr'.format(sim_name_base)
-    Diffspath = '/scratch/snx3000/heimc/pgw/vertint_{}'.format(sim_name_base)
+    #Diffspath = '/scratch/snx3000/heimc/pgw/vertint_plev_{}'.format(sim_name_base)
+    Diffspath = '/scratch/snx3000/heimc/pgw/vertint_alt_{}'.format(sim_name_base)
     terrainpath = '/scratch/snx3000/heimc/pgw/constant_{}.nc'.format(sim_name_base)
-    recompute_pressure = True
+
+    recompute_pressure = 'barometric'
+    recompute_pressure = 'hydrostatic'
+    recompute_pressure = False
+
+    pgw_sim_name_ending = 'pgw'
+    pgw_sim_name_ending = 'pgw2'
+    pgw_sim_name_ending = 'pgw3'
+    pgw_sim_name_ending = 'pgw4'
 
     year = sim_start_date.year
     print(year)
 
-    lafpath = os.path.join(wd_path, 
+    inp_laf_path = os.path.join(wd_path, 
             '{:%y%m%d}00_{}_ctrl/int2lm_out/laf{:%Y%m%d}000000.nc'.format(
                         sim_start_date, sim_name_base, sim_start_date))
     newyear = year + changeyears
     newtimestring = f'seconds since {newyear}-01-01 00:00:00'
+
     outputpath = os.path.join(wd_path, 
-                    '{:%y%m%d}00_{}_pgw2/int2lm_out/'.format(
-                        sim_start_date, sim_name_base))
-    laftimestring = 'seconds since 2006-01-01 00:00:00'
+                    '{:%y%m%d}00_{}_{}/int2lm_out/'.format(
+                        sim_start_date, sim_name_base, pgw_sim_name_ending))
+    #if output directory doesn't exist create it
+    Path(outputpath).mkdir(parents=True, exist_ok=True)
+
     #init_dt = datetime(2006,8,1,0)
     init_dt = sim_start_date
-    laftimestep = int(hour_of_year(init_dt)/args.delta_hour_inc)
-    print('use time step {}'.format(laftimestep))
+    delta_time_step = int(hour_of_year(init_dt)/args.delta_hour_inc)
+    print('use time step {}'.format(delta_time_step))
 
     pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)
-    output_laf_path = os.path.join(outputpath, 
+    out_laf_path = os.path.join(outputpath, 
             'laf{:%Y%m%d}000000.nc'.format(pgw_sim_start_date))
-    print(output_laf_path)
+    print(out_laf_path)
 
 
-    #height_flat_hl = xr.open_dataset(lafpath).vcoord #these are half levels
-    #height_flat = xr.open_dataset(lafpath).vcoord[:-1] #to fill with full levels
-    #vcflat=xr.open_dataset(lafpath).vcoord.vcflat
+    #height_flat_hl = xr.open_dataset(inp_laf_path).vcoord #these are half levels
+    #height_flat = xr.open_dataset(inp_laf_path).vcoord[:-1] #to fill with full levels
+    #vcflat=xr.open_dataset(inp_laf_path).vcoord.vcflat
 
     ##get the full level height
     #height_flat.data = height_flat_hl.data[1:] + \
     #(0.5 * (height_flat_hl.data[:-1] - height_flat_hl.data[1:]) )
 
-    vcoord = xr.open_dataset(lafpath).vcoord
+    vcoord = xr.open_dataset(inp_laf_path).vcoord
+    hsurf = xr.open_dataset(terrainpath).HSURF
 
-    alt_hl = get_alt_half_level(vcoord, terrainpath)
+    alt_hl = get_alt_half_level(vcoord, hsurf)
     alt = get_alt_full_level(alt_hl)
 
     ## old version
     #pref_hl, pref_sfc, height_array = get_pref(vcflat, terrainpath, height_flat_hl)
     #pref, pref_sfc, height_array = get_pref(vcflat, terrainpath, height_flat)
 
-    pref_hl = get_pref(vcoord, terrainpath, 'hl')
-    pref = get_pref(vcoord, terrainpath, 'fl')
+    pref_hl = get_pref(vcoord, hsurf, 'hl')
+    pref = get_pref(vcoord, hsurf, 'fl')
+    pref_sfc = get_pref_sfc(vcoord, hsurf)
     #print(pref.mean(axis=(1,2)))
     #print(pref_hl.mean(axis=(1,2)))
     #plt.plot(pref_hl.mean(axis=(1,2)), alt_hl.mean(axis=(1,2)))
@@ -251,5 +237,5 @@ if __name__ == "__main__":
     #plt.show()
     #quit()
 
-    lafadapt(lafpath, output_laf_path, outputpath, Diffspath, laftimestep, newtimestring,
-            alt_hl, alt, pref_hl, pref, recompute_pressure)
+    lafadapt(inp_laf_path, out_laf_path, Diffspath, delta_time_step, newtimestring,
+            alt_hl, alt, pref_hl, pref, pref_sfc, recompute_pressure)

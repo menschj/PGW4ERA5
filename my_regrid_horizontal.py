@@ -47,25 +47,16 @@ def regridhorizontal(infolder, variablename, n_out_time_steps,
 
     Path(outputfolder).mkdir(parents=True, exist_ok=True)
 
-    # TEST BASE 
     IMP = IterMP(njobs=njobs, run_async=True)
     fargs = {'grid_des_file':out_grid_file,}
     step_args = []
     for stepnum in range(n_out_time_steps):
-    #for stepnum in range(1000):
-    #for stepnum in range(1000,2000):
-    #for stepnum in range(2000,n_out_time_steps):
+    #for stepnum in range(1696,1696+11*8):
         #print(stepnum)
-        i_compute = 1
-        #i_compute = 0
-        if stepnum == 0:
-            i_compute = 1
-
-        if i_compute:
-            infile = f"{infolder}/{variablename}{stepnum:05d}.nc"
-            outfile = f"{outputfolder}/{variablename}{stepnum:05d}.nc"
-            step_args.append({'inp_file':infile,
-                              'out_file':outfile})
+        infile = f"{infolder}/{variablename}{stepnum:05d}.nc"
+        outfile = f"{outputfolder}/{variablename}{stepnum:05d}.nc"
+        step_args.append({'inp_file':infile,
+                          'out_file':outfile})
     IMP.run(run_remap_with_cdo_fix, fargs, step_args)
 
     #targetgrid = xr.open_dataset(out_grid_file)

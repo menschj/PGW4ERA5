@@ -34,18 +34,20 @@ echo -e "$SLURM_JOB_NAME started on $(date):\n"
 year=2006
 month=08
 start_day=01
-end_day=31
+end_day=11
 
 start_dayhr=${start_day}00
-end_dayhr=${end_day}21
+end_dayhr=${end_day}00
 #sim_start_date=${year}${month}01 # CH202112
 sim_start_date=${year}${month}${start_day}
 
-arg_f=2006080100
-arg_l=2006090100
+#arg_f=2006080100
+#arg_l=2006090100
+arg_f=2006080200
+arg_l=2006091100
 
-#arg_f=${year}${month}${start_dayhr}
-#arg_l=${year}${month}${end_dayhr}
+arg_f=${year}${month}${start_dayhr}
+arg_l=${year}${month}${end_dayhr}
 srun -c $SLURM_CPUS_PER_TASK python -u my_lbfd_adapt.py -d 3 \
                 -f ${arg_f} -l ${arg_l} -s ${sim_start_date}
 

@@ -10,7 +10,7 @@ from scipy.interpolate import RegularGridInterpolator
 from functions import get_alt_half_level, get_alt_full_level
 
 def vertinterpol(constant_path, datapath, var_name, 
-                    outputpath, vcflat, inputtimesteps, starttime=0):
+                    outputpath, inputtimesteps, starttime=0):
 
     for stepnum in range(starttime,inputtimesteps):
         print('step {}'.format(stepnum))
@@ -186,10 +186,10 @@ if __name__ == "__main__":
 	var_name=str(sys.argv[3])
 	#outvar=str(sys.argv[4])
 	outputpath=str(sys.argv[4])
-	vcflat=int(sys.argv[5])
-	inputtimesteps=int(sys.argv[6])
-	starttime=int(sys.argv[7])
+	#vcflat=int(sys.argv[5])
+	inputtimesteps=int(sys.argv[5])
+	starttime=int(sys.argv[6])
 
 
-	vertinterpol(constant_path, datapath, var_name, outputpath, vcflat, inputtimesteps, starttime=starttime)
+	vertinterpol(constant_path, datapath, var_name, outputpath, inputtimesteps, starttime=starttime)
 	#vertinterpol_ORIG(terrainpath, datapath, variablename, outvar, outputpath, vcflat, inputtimesteps, starttime=starttime)

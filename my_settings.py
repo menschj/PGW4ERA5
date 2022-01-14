@@ -20,10 +20,10 @@ parser.add_argument('-n', '--n_per_day', type=int, default=8)
 args = parser.parse_args()
 print(args)
 
-performsmooth   = False
-performinterp   = False
-regridhori      = False
-regridvert      = True
+performsmooth   = 0
+performinterp   = 0
+regridhori      = 0
+regridvert      = 1
 
 # number of output time steps in total
 n_out_time_steps = 366 * args.n_per_day
@@ -33,7 +33,7 @@ var_name_map = {
         'hurs'  :'RELHUM_S',
         'ta'    :'T', 
         'tas'   :'T_S', 
-        'pa'    :'P', 
+        'pa'    :'PP', 
         'ua'    :'U', 
         'va'    :'V'}
 var_names = args.var_names.split(',')
@@ -43,7 +43,7 @@ for var_name in var_names:
                             var_name))
 
 
-if performsmooth == True:
+if performsmooth:
 #settings for timesmoothing script:
 
     #list of the files that contain the variables to be smoothed
@@ -73,7 +73,7 @@ if performsmooth == True:
             print(commandsmooth)
     
 
-if performinterp == True:
+if performinterp:
     ###########################################################################
     ### Namelist
     ###########################################################################
@@ -95,7 +95,7 @@ if performinterp == True:
                         gcm_data_freq, out_path, args.n_par)
 
 
-if regridhori == True:
+if regridhori:
     ###########################################################################
     ### Namelist
     ###########################################################################
@@ -119,24 +119,24 @@ if regridhori == True:
 
 
 #this part is software/hardware specific for the piz daint supercomputer on CSCS
-if regridvert == True:
+if regridvert:
 
-    ##note that it it advised to create a height.txt (see example in repository)
     #constant_path = '/scratch/snx3000/heimc/pgw/constant_SA_12.nc'
     #datapath = '/scratch/snx3000/heimc/pgw/regridded_alt_SA_12/'
     #outputpath = '/scratch/snx3000/heimc/pgw/vertint_alt_SA_12/'
-    terrainpath = '/scratch/snx3000/heimc/pgw/constant_SA_3.nc'
-    datapath = '/scratch/snx3000/heimc/pgw/regridded_SA_3/'
-    outputpath = '/scratch/snx3000/heimc/pgw/vertint_SA_3/'
+
+    constant_path = '/scratch/snx3000/heimc/pgw/constant_SA_3.nc'
+    datapath = '/scratch/snx3000/heimc/pgw/regridded_alt_SA_3/'
+    outputpath = '/scratch/snx3000/heimc/pgw/vertint_alt_SA_3/'
+
     i_submit = 1
     submit_dir = '/scratch/snx3000/heimc/pgw/submit/'
-    vcflat = 17827 #height where modellevels become flat
-    steps_per_job = 100 #split the job into multiple chucks and run in paralell
-    starttime = 0
-    #starttime = 1696
-    #starttime = 1697
-    #starttime = 1698
-    #starttime = 1699
+    #vcflat = 17827 #height where modellevels become flat
+    steps_per_job = 10 #split the job into multiple chucks and run in paralell
+    lasttime = n_out_time_steps
+    #starttime = 0
+    starttime = 1696
+    lasttime = starttime + 11 * 8
 
     # copy heights file and script to submission directory
     if i_submit:
@@ -149,29 +149,27 @@ if regridvert == True:
     for var_name in var_names:
         print(var_name)
         #outvar = outvar_dict[var_name]
-        for start in range(starttime, n_out_time_steps, steps_per_job):
-            end_job = start + steps_per_job
+        for start_job in range(starttime, lasttime, steps_per_job):
+            end_job = min(start_job + steps_per_job, lasttime-1)
 
-            print('start at {}'.format(start))
+            print('start at {}'.format(start_job))
             print('end at {}'.format(end_job))
             
             if i_submit == 0:
-                ###TODO debug
-                #start = 0
-                end_job = start + 1 # for debugging purpose only run one time step
+                ###TODO debug only
+                end_job = start_job + 1 # for debugging purpose only run one time step
                 vertinterpol(constant_path, datapath, var_name_map[var_name], 
-                            outputpath, vcflat, end_job, start)
+                            outputpath, end_job, start_job)
                 break
-                #quit()
             else:
-                comandregver = f"srun -u python cclm_vertical.py {constant_path} {datapath} {var_name_map[var_name]} {outputpath} {vcflat} {end_job} {start}"
+                comandregver = f"srun -u python cclm_vertical.py {constant_path} {datapath} {var_name_map[var_name]} {outputpath} {end_job} {start_job}"
 
                 #create a run script for afew timesteps and each variable. 
                 with open (f'/scratch/snx3000/heimc/pgw/submit/submit_{var_name}.bash', 'w') as rsh:
                     rsh.write(f'''\
 #!/bin/bash -l
-#SBATCH --job-name="{var_name}_{start}"
-#SBATCH --time=06:00:00
+#SBATCH --job-name="{var_name}_{start_job}"
+#SBATCH --time=01:30:00
 #SBATCH --partition=normal
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-core=1
@@ -180,8 +178,8 @@ if regridvert == True:
 #SBATCH --constraint=gpu
 #SBATCH --hint=nomultithread
 #SBATCH --account=pr94
-#SBATCH --output=bOut/out_{var_name}_{start}
-#SBATCH --error=bOut/err_{var_name}_{start}
+#SBATCH --output=bOut/out_{var_name}_{start_job}
+#SBATCH --error=bOut/err_{var_name}_{start_job}
 
 module load daint-gpu
 
