@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #
 #SBATCH --job-name="prep pgw"
-#SBATCH --time=00:30:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --partition=normal
 #SBATCH --output=/scratch/snx3000/heimc/pgw/out_scripts/out0
@@ -10,20 +10,22 @@
 #SBATCH --account='pr94'
 #SBATCH --constraint=gpu
 
-### tasks
-# time interpolation: 5
-# regrid horizontal: 12
-
 source ~/phd_scripts/load_modules_daint.sh
 echo -e "$SLURM_JOB_NAME started on $(date):\n $command $1 $2\n"
 
-var_names=hur,hurs,ta,tas,ua,va
+var_names=ta,hur,pa,ua,va,tas,hurs
+#var_names=ta,hur,pa,ua,va
+#var_names=ta
 #var_names=hur
-var_names=ta
+#var_names=pa
 #var_names=ua
 #var_names=va
 #var_names=tas
 #var_names=hurs
+
+#var_names=hur,pa
+#var_names=ua,va
+#var_names=tas,hurs
 
 
 echo $var_names

@@ -40,7 +40,7 @@ def fix_grid_coord_diffs(fix_ds, ref_ds):
         fix_ds['rlat'] = ref_ds.rlat
 
 
-def get_alt_half_level(vcoord, terrainpath):
+def get_alt_half_level(vcoord, hsurf):
     """
     Compute altitude of half levels (Gal-Chen coordinate)
     """
@@ -49,8 +49,7 @@ def get_alt_half_level(vcoord, terrainpath):
     smoothing = (vcoord.vcflat - height_flat_half_level) / vcoord.vcflat
     smoothing = smoothing.where(smoothing > 0, 0)
 
-    const = xr.open_dataset(terrainpath)
-    hsurf = const['HSURF'].squeeze()
+    hsurf = hsurf.squeeze()
 
     #alt_half_level = (
     #    height_flat_half_level.values[:,None,None] + 

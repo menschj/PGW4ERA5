@@ -7,7 +7,7 @@ from my_lbfd_adapt import hour_of_year
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-from functions import (get_alt_half_level, get_alt_full_level,
+from base.functions import (get_alt_half_level, get_alt_full_level,
         adjust_pressure_to_new_climate,  get_pref,
         fix_grid_coord_diffs)
 """

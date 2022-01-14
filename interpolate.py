@@ -9,19 +9,134 @@ import dask
 from package.mp import IterMP
 ###############################################################################
 
-def save_time_step(outfile, out_path, var_name, filenum):
-    file_path = f"{out_path}/{var_name}{filenum:05d}.nc"
-    outfile[filenum].to_netcdf(file_path, mode='w')       
+def save_time_step(var_out, out_path, var_name, out_time_step):
+    file_path = f"{out_path}/{var_name}{out_time_step:05d}.nc"
+    #print(file_path)
+    #print(var_out.sel(time=[out_time_step]))
+    #quit()
+    var_out.sel(time=[out_time_step]).to_netcdf(file_path, mode='w')       
 
-    # sanity check
-    ds = xr.open_dataset(file_path)
-    if np.sum(np.isnan(ds[var_name])).values > 0:
-        ds.close()
-        os.remove(out_lbfd_file)
-        raise ValueError('File {} var {} broken!'.format(
-                        out_lbfd_file, var_name))
+    ## sanity check
+    #ds = xr.open_dataset(file_path)
+    #if np.sum(np.isnan(ds[var_name])).values > 0:
+    #    ds.close()
+    #    os.remove(out_lbfd_file)
+    #    raise ValueError('File {} var {} broken!'.format(
+    #                    out_lbfd_file, var_name))
 
-def interpannualcycle(gcm_file_path, var_name, n_out_time_steps,
+
+def interpannualcycle(gcm_file_path, inp_var_name, out_var_name,
+                    n_out_time_steps,
+                    gcm_data_freq, out_path, n_par):
+    """
+    Interpolate temporally an annual cyle with sparse data points 
+    linearly to higher time frequencies.
+    This can be used to interpolate a daily or monthly resolution annual 
+    cycle to the frequency that is used to update the boundary conditions. 
+
+    Input:
+    gcm_file_path:  Path to a netcdf file of the annual cycle of the signal 
+                    to be interpolated.  
+    var_name:       The name of the variable within the given netcdf file
+                    which will be interpolated.
+    n_out_time_steps: 
+                    Amount of thimesteps needed as output (e.g. 366 * 4 
+                    for output every 6 hours in a gregorian calendar)
+    gcm_data_freq:  Either 'day' or 'month': Frequency of the input annual 
+                    cycle, either daily or monthly averages.
+    out_path:       path to a folder to put the output netcdf files.
+    
+    Output:
+    Multiple netcdf files! One netcdf file per output timestep. They are 
+    numbered upwards from 0, starting at the beginning of the year and 
+    increasing by 1 for each time step. Format var_nameNNNNN.nc, where 
+    NNNNN is the number of the timestep 
+    (e.g. ta00432.nc; for timestep number 432 and a variable called ta).
+    """
+
+    #open the inputfile and variable
+    ds_in = xr.open_dataset(gcm_file_path)
+    ds_in = ds_in.rename({inp_var_name: out_var_name})
+    var_in = ds_in[out_var_name].squeeze()
+
+    #enumerate the time steps for easyier interpolation
+    timesteps = len(var_in['time'])
+    var_in['time'] = np.arange(timesteps)
+
+    #create the new time steps if daily inputdata is given 
+    # (no special treatment necessary)
+    if gcm_data_freq == 'day':
+        all_tnew = np.linspace(0, timesteps-1, num=n_out_time_steps)
+
+    #create new time steps with monthly data (shift the montly means to the 
+    # end of the month and add a dublicate the first time step)
+    if gcm_data_freq == 'month':
+        all_tnew = np.linspace(0, timesteps, num=n_out_time_steps)
+
+        jan = 0.5*(var_in[0] + var_in[-1])
+        first = var_in[:-1, ...]
+        second = var_in[1:, ...]
+        first['time'] = second['time'] #metadata must match for xarray computation.
+
+        rest = 0.5*(first + second)
+        end = jan.copy()
+
+        jan['time'] = rest['time'][0] - 1
+        end['time'] = rest['time'][-1] + 1
+
+        var_in = xr.concat([jan,rest,end], dim='time').transpose('time', ...)#.chunk()
+
+
+    #if len(var_in.shape) > 3:
+            #var_in = var_in.chunk({'plev':1})	
+    #interpolate new output timesteps
+    #quit()
+    all_out_time_steps = np.arange(n_out_time_steps)
+
+    #start_ind = 0
+    #end_ind = 1000
+    #tnew = all_tnew[start_ind:end_ind]
+    #out_time_steps = all_out_time_steps[start_ind:end_ind]
+    tnew = all_tnew
+    out_time_steps = all_out_time_steps
+    #print(tnew)
+    #print(out_time_steps)
+    #quit()
+
+    var_out = var_in.interp(time=tnew, method='linear', assume_sorted=True)
+    #print(var_out)
+    #quit()
+
+    #numerate n_out_time_steps
+    var_out['time'] = out_time_steps
+
+    #save each output timestep in a seperate netcdf file for easyier handling later on
+    Path(out_path).mkdir(parents=True, exist_ok=True)
+
+    IMP = IterMP(njobs=1, run_async=True)
+    #IMP = IterMP(njobs=n_par, run_async=True)
+    fargs = {
+            'var_out':var_out,
+            'out_path':out_path,
+            'var_name':out_var_name,
+            }
+    step_args = []
+    for out_time_step in out_time_steps:
+        step_args.append({'out_time_step':out_time_step})
+    IMP.run(save_time_step, fargs, step_args)
+    #quit()
+
+
+
+
+
+
+
+
+
+
+
+def interpannualcycle_ORIG(gcm_file_path, var_name, n_out_time_steps,
                     gcm_data_freq, out_path, n_par):
     """
     Interpolate temporally an annual cyle with sparse data points 
@@ -83,6 +198,7 @@ def interpannualcycle(gcm_file_path, var_name, n_out_time_steps,
     #if len(infile.shape) > 3:
             #infile = infile.chunk({'plev':1})	
     #interpolate new output timesteps
+    print('test')
     outfile = infile.interp(time=tnew, method='linear', assume_sorted=True)#.chunk({'time':1})
     infile.close()
     del infile

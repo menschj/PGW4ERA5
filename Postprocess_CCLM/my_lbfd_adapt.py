@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from datetime import datetime,timedelta
 from dateutil.relativedelta import relativedelta
-from functions import (get_alt_half_level, get_alt_full_level,
+from base.functions import (get_alt_half_level, get_alt_full_level,
         adjust_pressure_to_new_climate,  get_pref,
         fix_grid_coord_diffs)
 

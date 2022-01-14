@@ -20,14 +20,29 @@ parser.add_argument('-n', '--n_per_day', type=int, default=8)
 args = parser.parse_args()
 print(args)
 
-var_name_options = ['hur', 'hurs', 'ta', 'tas', 'ua', 'va']
+performsmooth   = False
+performinterp   = False
+regridhori      = False
+regridvert      = True
+
+# number of output time steps in total
+n_out_time_steps = 366 * args.n_per_day
+
+var_name_map = {
+        'hur'   :'RELHUM',
+        'hurs'  :'RELHUM_S',
+        'ta'    :'T', 
+        'tas'   :'T_S', 
+        'pa'    :'P', 
+        'ua'    :'U', 
+        'va'    :'V'}
 var_names = args.var_names.split(',')
 for var_name in var_names:
-    if var_name not in var_name_options:
+    if var_name not in var_name_map:
             raise ValueError('Input var_name {} is invalid.'.format(
                             var_name))
 
-performsmooth = False
+
 if performsmooth == True:
 #settings for timesmoothing script:
 
@@ -58,42 +73,39 @@ if performsmooth == True:
             print(commandsmooth)
     
 
-performinterp = False
 if performinterp == True:
     ###########################################################################
     ### Namelist
     ###########################################################################
     #see documentation in interpolate.py
     # run e.g. cdo sellonlatbox,-65,35,-45,30
-    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/GCMdata_SA/'
-    #gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/GCMdata/'
+    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/MPI-ESM1-2-HR/'
     gcm_data_freq = 'month'
 
-    out_path = '/scratch/snx3000/heimc/pgw/interpolated/'
-    n_out_time_steps = 366 * args.n_per_day
+    out_path = '/scratch/snx3000/heimc/pgw/interpolated_alt/'
     ###########################################################################
 
     for var_name in var_names:  
         print('time interpolation {}'.format(var_name))
-        gcm_file_path = os.path.join(gcm_data_path, 'diff_{}.nc'.format(var_name))
-        interpannualcycle(gcm_file_path, var_name, n_out_time_steps,
-                            gcm_data_freq, out_path, args.n_par)
+        gcm_file_path = os.path.join(gcm_data_path, 
+                                'alt_{}_delta.nc'.format(var_name))
+        interpannualcycle(gcm_file_path, var_name, 
+                        var_name_map[var_name],
+                        n_out_time_steps,
+                        gcm_data_freq, out_path, args.n_par)
 
 
-regridhori = False
 if regridhori == True:
     ###########################################################################
     ### Namelist
     ###########################################################################
-    infolder = '/scratch/snx3000/heimc/pgw/interpolated/'
-    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_SA_12/'
+    infolder = '/scratch/snx3000/heimc/pgw/interpolated_alt/'
 
-    n_out_time_steps = 366 * args.n_per_day
-    out_grid_file = 'target_grid_OLD'
-    out_grid_file = 'target_grid_interim2'
-    out_grid_file = 'target_grid_large2'
-    out_grid_file = 'target_grid_large3'
+    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt_SA_12/'
     out_grid_file = 'target_grid_SA_12'
+
+    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt_SA_3/'
+    out_grid_file = 'target_grid_SA_3'
     ###########################################################################
 
     #get the python command and write a file to submit to the piz daint machine
@@ -101,28 +113,25 @@ if regridhori == True:
     #subprocess.run(comandreghor, shell=True)
     for var_name in var_names:
         print('regrid horizontal {}'.format(var_name))
-        regridhorizontal(infolder, var_name, n_out_time_steps,
+        regridhorizontal(infolder, var_name_map[var_name], n_out_time_steps,
                         out_grid_file, outputfolder, njobs=args.n_par)
 
 
 
 #this part is software/hardware specific for the piz daint supercomputer on CSCS
-regridvert = True
 if regridvert == True:
 
     ##note that it it advised to create a height.txt (see example in repository)
-    terrainpath = '/scratch/snx3000/heimc/pgw/constant_SA_12.nc'
-    datapath = '/scratch/snx3000/heimc/pgw/regridded_SA_12/'
-    outputpath = '/scratch/snx3000/heimc/pgw/vertint_SA_12/'
-    #terrainpath = '/scratch/snx3000/heimc/pgw/constant_SA_3.nc'
-    #datapath = '/scratch/snx3000/heimc/pgw/regridded_SA_3/'
-    #outputpath = '/scratch/snx3000/heimc/pgw/vertint_SA_3/'
-    outvar_dict = {'hur':'RELHUM', 'ta':'T', 'ua':'U', 'va':'V'}
-    i_submit = 0
+    #constant_path = '/scratch/snx3000/heimc/pgw/constant_SA_12.nc'
+    #datapath = '/scratch/snx3000/heimc/pgw/regridded_alt_SA_12/'
+    #outputpath = '/scratch/snx3000/heimc/pgw/vertint_alt_SA_12/'
+    terrainpath = '/scratch/snx3000/heimc/pgw/constant_SA_3.nc'
+    datapath = '/scratch/snx3000/heimc/pgw/regridded_SA_3/'
+    outputpath = '/scratch/snx3000/heimc/pgw/vertint_SA_3/'
+    i_submit = 1
     submit_dir = '/scratch/snx3000/heimc/pgw/submit/'
     vcflat = 17827 #height where modellevels become flat
-    n_out_time_steps = 366 * args.n_per_day
-    steps_per_job = 200 #split the job into multiple chucks and run in paralell
+    steps_per_job = 100 #split the job into multiple chucks and run in paralell
     starttime = 0
     #starttime = 1696
     #starttime = 1697
@@ -132,12 +141,14 @@ if regridvert == True:
     # copy heights file and script to submission directory
     if i_submit:
         with cd(submit_dir):
-            subprocess.run('cp /project/pr94/heimc/lmp_template/submodules/pgw-python/heights.txt .', shell=True)
+            #subprocess.run('cp /project/pr94/heimc/lmp_template/submodules/pgw-python/heights.txt .', shell=True)
             subprocess.run('cp /project/pr94/heimc/lmp_template/submodules/pgw-python/cclm_vertical.py .', shell=True)
+            subprocess.run('cp /project/pr94/heimc/lmp_template/submodules/pgw-python/functions.py .', shell=True)
+            subprocess.run('cp /project/pr94/heimc/lmp_template/submodules/pgw-python/constants.py .', shell=True)
 
     for var_name in var_names:
         print(var_name)
-        outvar = outvar_dict[var_name]
+        #outvar = outvar_dict[var_name]
         for start in range(starttime, n_out_time_steps, steps_per_job):
             end_job = start + steps_per_job
 
@@ -148,18 +159,19 @@ if regridvert == True:
                 ###TODO debug
                 #start = 0
                 end_job = start + 1 # for debugging purpose only run one time step
-                vertinterpol(terrainpath, datapath, var_name, outvar, 
+                vertinterpol(constant_path, datapath, var_name_map[var_name], 
                             outputpath, vcflat, end_job, start)
-                quit()
+                break
+                #quit()
             else:
-                comandregver = f"srun -u python cclm_vertical.py {terrainpath} {datapath} {var_name} {outvar} {outputpath} {vcflat} {end_job} {start}"
+                comandregver = f"srun -u python cclm_vertical.py {constant_path} {datapath} {var_name_map[var_name]} {outputpath} {vcflat} {end_job} {start}"
 
                 #create a run script for afew timesteps and each variable. 
                 with open (f'/scratch/snx3000/heimc/pgw/submit/submit_{var_name}.bash', 'w') as rsh:
                     rsh.write(f'''\
 #!/bin/bash -l
 #SBATCH --job-name="{var_name}_{start}"
-#SBATCH --time=23:00:00
+#SBATCH --time=06:00:00
 #SBATCH --partition=normal
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-core=1
