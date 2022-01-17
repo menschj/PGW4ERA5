@@ -176,12 +176,12 @@ if __name__ == "__main__":
 
     recompute_pressure = 'barometric'
     recompute_pressure = 'hydrostatic'
-    recompute_pressure = False
+    #recompute_pressure = False
 
     pgw_sim_name_ending = 'pgw'
     pgw_sim_name_ending = 'pgw2'
     pgw_sim_name_ending = 'pgw3'
-    pgw_sim_name_ending = 'pgw4'
+    #pgw_sim_name_ending = 'pgw4'
 
     year = sim_start_date.year
     print(year)

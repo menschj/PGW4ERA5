@@ -4,8 +4,8 @@
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --partition=normal
-#SBATCH --output=/scratch/snx3000/heimc/pgw/out_scripts/out0
-#SBATCH --error=/scratch/snx3000/heimc/pgw/out_scripts/err0
+#SBATCH --output=/scratch/snx3000/heimc/pgw/out_scripts/out1
+#SBATCH --error=/scratch/snx3000/heimc/pgw/out_scripts/err1
 #SBATCH --ntasks=1
 #SBATCH --account='pr94'
 #SBATCH --constraint=gpu
@@ -32,22 +32,24 @@ echo -e "$SLURM_JOB_NAME started on $(date):\n"
 ############################################################
 
 year=2006
-month=08
+start_month=08
+end_month=09
 start_day=01
-end_day=11
+end_day=01
 
 start_dayhr=${start_day}00
 end_dayhr=${end_day}00
-#sim_start_date=${year}${month}01 # CH202112
-sim_start_date=${year}${month}${start_day}
+#sim_start_date=${year}${start_month}01 # CH202112
+sim_start_date=${year}${start_month}${start_day}
 
 #arg_f=2006080100
 #arg_l=2006090100
-arg_f=2006080200
+arg_f=2006080100
 arg_l=2006091100
 
-arg_f=${year}${month}${start_dayhr}
-arg_l=${year}${month}${end_dayhr}
+arg_f=${year}${start_month}${start_dayhr}
+arg_l=${year}${end_month}${end_dayhr}
+
 srun -c $SLURM_CPUS_PER_TASK python -u my_lbfd_adapt.py -d 3 \
                 -f ${arg_f} -l ${arg_l} -s ${sim_start_date}
 

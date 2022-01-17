@@ -14,10 +14,10 @@ source ~/phd_scripts/load_modules_daint.sh
 echo -e "$SLURM_JOB_NAME started on $(date):\n $command $1 $2\n"
 
 var_names=ta,hur,pa,ua,va,tas,hurs
-#var_names=ta,hur,pa,ua,va
+var_names=ta,hur,pa,ua,va
 #var_names=ta
 #var_names=hur
-var_names=pa
+#var_names=pa
 #var_names=ua
 #var_names=va
 #var_names=tas

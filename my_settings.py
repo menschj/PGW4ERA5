@@ -136,6 +136,8 @@ if regridvert:
     lasttime = n_out_time_steps
     #starttime = 0
     starttime = 1696
+    starttime = 1783
+    starttime = 1870
     lasttime = starttime + 11 * 8
 
     # copy heights file and script to submission directory
