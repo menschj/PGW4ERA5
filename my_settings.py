@@ -132,13 +132,13 @@ if regridvert:
     i_submit = 1
     submit_dir = '/scratch/snx3000/heimc/pgw/submit/'
     #vcflat = 17827 #height where modellevels become flat
-    steps_per_job = 10 #split the job into multiple chucks and run in paralell
+    steps_per_job = 5 #split the job into multiple chucks and run in paralell
     lasttime = n_out_time_steps
     #starttime = 0
-    starttime = 1696
+    #starttime = 1696
     starttime = 1783
-    starttime = 1870
-    lasttime = starttime + 11 * 8
+    #starttime = 1870
+    lasttime = starttime + 22 * 8
 
     # copy heights file and script to submission directory
     if i_submit:

@@ -11,6 +11,7 @@ from base.functions import (
         get_alt_half_level, get_alt_full_level,
         pressure_recompute, get_pref_old,
         adjust_pressure_to_new_climate, 
+        adjust_pressure_to_new_climate2, 
         get_pref, get_pref_sfc,
         fix_grid_coord_diffs, add_delta)
 """
@@ -101,13 +102,20 @@ def lafadapt(inp_laf_path, out_laf_path, Diffspath, delta_time_step,
 
 
     laffile = xr.open_dataset(inp_laf_path, decode_cf=False)
-
     print('load done')
-    #print('time' in laffile['T'].dims)
-    #print(laffile['T'])
+
+    laffile.time.attrs['units'] = newtimestring
+    #print(laffile['time'])
+    #laffile['time'].data[0] = 0
     #quit()
 
-    #get relative humidity in old laf
+    ### change time to future
+    ##endtimestring = lbfd.time.units[-15:]
+    ##old_yyyy_timestamp = int(lbfd.time.units[-19:-15])
+    ##new_yyyy_timestamp = old_yyyy_timestamp + changeyears
+    ##lbfd.time.attrs['units'] = f'seconds since {new_yyyy_timestamp}{endtimestring}'
+
+    # get relative humidity in old laf
     RH_old, RH_S_old = comprelhums(laffile, pref_hl, pref)
     print('rh done')
 
@@ -120,7 +128,10 @@ def lafadapt(inp_laf_path, out_laf_path, Diffspath, delta_time_step,
 
     ## HCH2021 Updated pressure computation using hydrostatic equation
     elif recompute_pressure == 'hydrostatic':
-        laffile = adjust_pressure_to_new_climate(Diffspath, delta_time_step,
+        #laffile = adjust_pressure_to_new_climate(Diffspath, delta_time_step,
+        #                        laffile, 
+        #                        alt_hl, alt, pref_hl, pref)
+        laffile = adjust_pressure_to_new_climate2(Diffspath, delta_time_step,
                                 laffile, 
                                 alt_hl, alt, pref_hl, pref)
         variables = ['T', 'T_S', 'U', 'V']
@@ -134,9 +145,6 @@ def lafadapt(inp_laf_path, out_laf_path, Diffspath, delta_time_step,
     for var in variables:
         print('add {}'.format(var))
         add_delta(var, laffile, Diffspath, delta_time_step)
-
-    laffile.time.attrs['units'] = newtimestring
-    laffile['time'].data[0] = 0
 
     #apply moisture function
     laffile = computeQVnew(laffile, RH_old, RH_S_old)
@@ -181,16 +189,16 @@ if __name__ == "__main__":
     pgw_sim_name_ending = 'pgw'
     pgw_sim_name_ending = 'pgw2'
     pgw_sim_name_ending = 'pgw3'
-    #pgw_sim_name_ending = 'pgw4'
+    pgw_sim_name_ending = 'pgw4'
+    pgw_sim_name_ending = 'pgw5'
 
-    year = sim_start_date.year
-    print(year)
+
+    pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)
+    newtimestring = 'seconds since {:%Y-%m-%d %H:%M:%S}'.format(pgw_sim_start_date)
 
     inp_laf_path = os.path.join(wd_path, 
             '{:%y%m%d}00_{}_ctrl/int2lm_out/laf{:%Y%m%d}000000.nc'.format(
                         sim_start_date, sim_name_base, sim_start_date))
-    newyear = year + changeyears
-    newtimestring = f'seconds since {newyear}-01-01 00:00:00'
 
     outputpath = os.path.join(wd_path, 
                     '{:%y%m%d}00_{}_{}/int2lm_out/'.format(
@@ -203,7 +211,6 @@ if __name__ == "__main__":
     delta_time_step = int(hour_of_year(init_dt)/args.delta_hour_inc)
     print('use time step {}'.format(delta_time_step))
 
-    pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)
     out_laf_path = os.path.join(outputpath, 
             'laf{:%Y%m%d}000000.nc'.format(pgw_sim_start_date))
     print(out_laf_path)

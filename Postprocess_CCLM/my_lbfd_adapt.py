@@ -274,9 +274,8 @@ if __name__ == "__main__":
     pgw_sim_name_ending = 'pgw3'
     pgw_sim_name_ending = 'pgw4'
 
-    year = sim_start_date.year
-    newyear = year + changeyears
-    newtimestring = f'seconds since {newyear}-01-01 00:00:00'
+    pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)
+    newtimestring = 'seconds since {:%Y-%m-%d %H:%M:%S}'.format(pgw_sim_start_date)
 
     lbfdpath = os.path.join(wd_path, 
                     '{:%y%m%d}00_{}_ctrl/int2lm_out/'.format(
@@ -290,10 +289,6 @@ if __name__ == "__main__":
     print(lbfdpath)
     print(terrainpath)
     print(outputpath)
-
-
-
-    newyear = year + changeyears
 
 
     delta_hour_inc = args.delta_hour_inc
@@ -315,15 +310,18 @@ if __name__ == "__main__":
     #loop over all boundary fields:
     for lbfd_dt in lbfd_dts:
 
-        #print and open boundary data
         delta_time_step = int(hour_of_year(lbfd_dt)/delta_hour_inc)
+        pgw_lbfd_dt = lbfd_dt + relativedelta(years=changeyears)
+
         #delta_time_step = 0
-        print(delta_time_step, lbfd_dt)
+        print('###################################################################')
+        print('###################################################################')
+        print('input {} using delta number {} to output {}'.format(
+               lbfd_dt, delta_time_step, pgw_lbfd_dt))
         inp_lbfd_path = os.path.join(lbfdpath, 
                     'lbfd{:%Y%m%d%H%M%S}.nc'.format(lbfd_dt))
-        out_lbfd_dt = lbfd_dt.replace(year=lbfd_dt.year + changeyears)
         out_lbfd_path = os.path.join(outputpath, 
-                    'lbfd{:%Y%m%d%H%M%S}.nc'.format(out_lbfd_dt))
+                    'lbfd{:%Y%m%d%H%M%S}.nc'.format(pgw_lbfd_dt))
         
         print('compute change for lbfd file: {}'.format(inp_lbfd_path))
         print('output file: {}'.format(out_lbfd_path))
