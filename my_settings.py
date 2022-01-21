@@ -3,7 +3,7 @@
 import subprocess, os, argparse
 from my_regrid_horizontal import regridhorizontal
 from interpolate import interpannualcycle
-from cclm_vertical import vertinterpol
+from era5_vertical import vertinterpol
 from package.utilities import cd
 from pathlib import Path
 ###############################################################################
@@ -35,6 +35,7 @@ var_name_map = {
         'ta'    :'T', 
         'tas'   :'T_S', 
         'pa'    :'PP', 
+        'ps'    :'PS', 
         'ua'    :'U', 
         'va'    :'V'}
 var_names = args.var_names.split(',')
@@ -80,16 +81,17 @@ if performinterp:
     ###########################################################################
     #see documentation in interpolate.py
     # run e.g. cdo sellonlatbox,-65,35,-45,30
-    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/MPI-ESM1-2-HR/alt2'
+    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/MPI-ESM1-2-HR/plev'
+    gcm_delta_base='plev_{}_delta.nc'
     gcm_data_freq = 'month'
 
-    out_path = '/scratch/snx3000/heimc/pgw/interpolated_alt2/'
+    out_path = '/scratch/snx3000/heimc/pgw/interpolated_plev/'
     ###########################################################################
 
     for var_name in var_names:  
         print('time interpolation {}'.format(var_name))
         gcm_file_path = os.path.join(gcm_data_path, 
-                                'alt_{}_delta.nc'.format(var_name))
+                                gcm_delta_base.format(var_name))
         interpannualcycle(gcm_file_path, var_name, 
                         var_name_map[var_name],
                         n_out_time_steps,
@@ -100,13 +102,16 @@ if regridhori:
     ###########################################################################
     ### Namelist
     ###########################################################################
-    infolder = '/scratch/snx3000/heimc/pgw/interpolated_alt2/'
+    infolder = '/scratch/snx3000/heimc/pgw/interpolated_plev/'
 
-    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_12/'
-    out_grid_file = 'target_grid_SA_12'
+    #outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_12/'
+    #out_grid_file = 'target_grid_SA_12'
 
-    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_3/'
-    out_grid_file = 'target_grid_SA_3'
+    #outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_3/'
+    #out_grid_file = 'target_grid_SA_3'
+
+    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_era5/'
+    out_grid_file = 'target_grid_era5'
     ###########################################################################
 
     #get the python command and write a file to submit to the piz daint machine
@@ -122,15 +127,19 @@ if regridhori:
 #this part is software/hardware specific for the piz daint supercomputer on CSCS
 if regridvert:
 
-    constant_path = '/scratch/snx3000/heimc/pgw/constant_SA_12.nc'
-    datapath = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_12/'
-    outputpath = '/scratch/snx3000/heimc/pgw/vertint_alt2_SA_12/'
+    #constant_path = '/scratch/snx3000/heimc/pgw/constant_SA_12.nc'
+    #datapath = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_12/'
+    #outputpath = '/scratch/snx3000/heimc/pgw/vertint_alt2_SA_12/'
 
     #constant_path = '/scratch/snx3000/heimc/pgw/constant_SA_3.nc'
     #datapath = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_3/'
     #outputpath = '/scratch/snx3000/heimc/pgw/vertint_alt2_SA_3/'
 
-    i_submit = 1
+    constant_path = '/scratch/snx3000/heimc/pgw/constant_era5.nc'
+    datapath = '/scratch/snx3000/heimc/pgw/regridded_era5/'
+    outputpath = '/scratch/snx3000/heimc/pgw/vertint_era5/'
+
+    i_submit = 0
     submit_dir = '/scratch/snx3000/heimc/pgw/submit/'
     #vcflat = 17827 #height where modellevels become flat
     steps_per_job = 10 #split the job into multiple chucks and run in paralell
@@ -143,7 +152,7 @@ if regridvert:
     if i_submit:
         with cd(submit_dir):
             #subprocess.run('cp /project/pr94/heimc/lmp_template/submodules/pgw-python/heights.txt .', shell=True)
-            subprocess.run('cp /project/pr94/heimc/lmp_template/submodules/pgw-python/cclm_vertical.py .', shell=True)
+            subprocess.run('cp /project/pr94/heimc/lmp_template/submodules/pgw-python/era5_vertical.py .', shell=True)
             subprocess.run('cp /project/pr94/heimc/lmp_template/submodules/pgw-python/functions.py .', shell=True)
             subprocess.run('cp /project/pr94/heimc/lmp_template/submodules/pgw-python/constants.py .', shell=True)
 
@@ -163,7 +172,7 @@ if regridvert:
                             outputpath, end_job, start_job)
                 break
             else:
-                comandregver = f"srun -u python cclm_vertical.py {constant_path} {datapath} {var_name_map[var_name]} {outputpath} {end_job} {start_job}"
+                comandregver = f"srun -u python era5_vertical.py {constant_path} {datapath} {var_name_map[var_name]} {outputpath} {end_job} {start_job}"
 
                 #create a run script for afew timesteps and each variable. 
                 with open (f'/scratch/snx3000/heimc/pgw/submit/submit_{var_name}.bash', 'w') as rsh:

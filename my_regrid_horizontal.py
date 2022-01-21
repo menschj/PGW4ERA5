@@ -52,6 +52,7 @@ def regridhorizontal(infolder, variablename, n_out_time_steps,
     step_args = []
     #for stepnum in range(n_out_time_steps):
     for stepnum in range(1696,1696+21*8):
+    #for stepnum in range(1696,1696+1):
         #print(stepnum)
         infile = f"{infolder}/{variablename}{stepnum:05d}.nc"
         outfile = f"{outputfolder}/{variablename}{stepnum:05d}.nc"

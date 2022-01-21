@@ -14,6 +14,7 @@ from datetime import datetime,timedelta
 from dateutil.relativedelta import relativedelta
 from constants import CON_RD, CON_G
 from scipy.interpolate import interp1d
+from scipy.interpolate import RegularGridInterpolator
 ##############################################################################
 
 def hour_of_year(dt): 
@@ -47,9 +48,9 @@ def fix_grid_coord_diffs(fix_ds, ref_ds):
 
 
 
-def add_delta(var, laffile, Diffspath, diff_time_step):
+def add_delta(var, laffile, delta_inp_path, diff_time_step):
     delta = xr.open_dataset(
-                f'{Diffspath}/{var}{diff_time_step:05d}.nc')[var]
+                f'{delta_inp_path}/{var}{diff_time_step:05d}.nc')[var]
     ## HCH2021 start
     ## There are small grid inconsistencies that have to be fixed... 
     fix_grid_coord_diffs(delta, laffile)
@@ -63,6 +64,95 @@ def add_delta(var, laffile, Diffspath, diff_time_step):
         laffile[var].data = (laffile[var].data + 
                             delta.data.astype('float32'))
     #quit()
+
+
+def add_delta_interp_era5(var_name, laffile, delta_inp_path, diff_time_step):
+    delta = xr.open_dataset(
+            f'{delta_inp_path}/{var_name}{diff_time_step:05d}.nc')[var_name]
+    print(delta)
+    delta = vert_interp_era5(delta, laffile, var_name)
+    print(delta)
+    quit()
+    ### HCH2021 start
+    ### There are small grid inconsistencies that have to be fixed... 
+    #fix_grid_coord_diffs(delta, laffile)
+    #fix_grid_coord_diffs(delta, laffile)
+    ### HCH 2021 stop
+
+    if 'time' in laffile[var].dims:
+        laffile[var].data[0,::] = (laffile[var].data[0,::] + 
+                            delta.data.astype('float32'))
+    else:
+        laffile[var].data = (laffile[var].data + 
+                            delta.data.astype('float32'))
+
+
+
+def vert_interp_era5(delta, laffile, var_name):
+
+    #grid dimensions for interpolation function
+    xx = np.arange(len(delta.lon))
+    yy = np.arange(len(delta.lat))
+
+    #get index for efficient computation (avoid loops)
+    yid, xid = np.ix_(yy,xx)
+    #print(yid.shape)
+    #print(xid.shape)
+    #print(ds_in[var_name].values.shape)
+    #print(cosmo_alt.values.shape)
+    #quit()
+
+    ## create output dataset
+    delta_out = laffile[var_name].copy()
+    #var_out = xr.DataArray(
+    #    data = np.zeros((len(laffile.level),len(yy),len(xx))),
+    #    dims = ['level','lat','lon'],
+    #)
+    #delta_out[var_name] = var_out
+
+    #ds_out = ds_out.assign_coords({'level':cosmo_alt.level})
+    #ds_out = ds_out.assign_coords(
+    #        {'level':vcoord.values[:-1] + np.diff(vcoord.values)/2})
+    #        #dtype='int32')})
+    #ds_out = ds_out.drop('alt')
+    #print(ds_in)
+    #print()
+    #print(ds_out)
+    #quit()
+
+    #print(delta.plev.values)
+    ##plt.plot(delta.isel(time=0).mean(dim=['lon','lat']),
+    ##        np.log(delta.plev.values))
+    ##plt.show()
+    #print(delta.isel(time=0).mean(dim=['lon','lat']))
+    delta = delta.reindex(plev=list(reversed(delta.plev)))
+    #print(delta.plev.values)
+    #print(delta.isel(time=0).mean(dim=['lon','lat']))
+    #quit()
+    plt.plot(delta.isel(time=0).mean(dim=['lon','lat']),
+            delta.plev.values)
+    plt.show()
+    #quit()
+    #print(delta.isel(time=0).shape)
+    #print(laffile['lnP0'].isel(time=0).shape)
+    #quit()
+
+    #get the 3D interpolation fucntion
+    fn = RegularGridInterpolator((np.log(delta.plev.values), yy, xx),
+                                delta.isel(time=0).values,
+                                bounds_error=False)
+
+    #interpolate the data to the actual height in the model
+    #data.values = fn((cosmo_alt.values, yid, xid))
+    delta_out.loc[dict(time=delta_out.time[0])].values = fn(
+            (laffile['lnP0'].isel(time=0).values, yid, xid))
+    plt.plot(delta_out.isel(time=0).mean(dim=['lon','lat']),
+            np.exp(laffile['lnP0'].isel(time=0)).mean(dim=['lon','lat']))
+    plt.show()
+    quit()
+    return(delta_out)
+
+
 
 
 def get_alt_half_level(vcoord, hsurf):
@@ -667,8 +757,8 @@ def pressure_recompute(laf_file, pref, height_array, height_flat):
     #function to compute pressure field in a differen climate using the barometric
     #formula (maintaining hydrostatic balance)
     #temperature changes
-    dT_sfc = xr.open_dataset(f'{Diffspath}/T_S{delta_time_step:05d}.nc')['T_S']
-    dT_atmos = xr.open_dataset(f'{Diffspath}/T{delta_time_step:05d}.nc')['T']
+    dT_sfc = xr.open_dataset(f'{delta_inp_path}/T_S{delta_time_step:05d}.nc')['T_S']
+    dT_atmos = xr.open_dataset(f'{delta_inp_path}/T{delta_time_step:05d}.nc')['T']
     ## HCH2021 start
     ## There are small grid inconsistencies that have to be fixed... 
     fix_grid_coord_diffs(dT_sfc, laf_file)
