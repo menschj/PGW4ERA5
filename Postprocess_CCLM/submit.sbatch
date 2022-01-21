@@ -1,11 +1,11 @@
 #!/bin/bash -l
 #
-#SBATCH --job-name="post pgw4"
+#SBATCH --job-name="post pgw5"
 #SBATCH --time=23:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --partition=normal
-#SBATCH --output=/scratch/snx3000/heimc/pgw/out_scripts/out2
-#SBATCH --error=/scratch/snx3000/heimc/pgw/out_scripts/err2
+#SBATCH --output=/scratch/snx3000/heimc/pgw/out_scripts/out0
+#SBATCH --error=/scratch/snx3000/heimc/pgw/out_scripts/err0
 #SBATCH --ntasks=1
 #SBATCH --account='pr94'
 #SBATCH --constraint=gpu
@@ -26,7 +26,7 @@ echo -e "$SLURM_JOB_NAME started on $(date):\n"
 
 ### perpare laf file
 ############################################################
-srun -c $SLURM_CPUS_PER_TASK python -u laf_adapt.py
+#srun -c $SLURM_CPUS_PER_TASK python -u laf_adapt.py
 
 ### perpare lbfd files
 ############################################################
@@ -34,7 +34,7 @@ year=2006
 start_month=08
 end_month=09
 start_day=01
-end_day=01
+end_day=21
 
 start_dayhr=${start_day}00
 end_dayhr=${end_day}00

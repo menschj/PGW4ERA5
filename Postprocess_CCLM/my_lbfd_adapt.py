@@ -262,17 +262,19 @@ if __name__ == "__main__":
     wd_path = '/scratch/snx3000/heimc/lmp/wd'
     changeyears = 0
     #Diffspath = '/scratch/snx3000/heimc/pgw/vertint_plev_{}'.format(sim_name_base)
-    Diffspath = '/scratch/snx3000/heimc/pgw/vertint_alt_{}'.format(sim_name_base)
+    #Diffspath = '/scratch/snx3000/heimc/pgw/vertint_alt_{}'.format(sim_name_base)
+    Diffspath = '/scratch/snx3000/heimc/pgw/vertint_alt2_{}'.format(sim_name_base)
     terrainpath = '/scratch/snx3000/heimc/pgw/constant_{}.nc'.format(sim_name_base)
 
     recompute_pressure = 'barometric'
     recompute_pressure = 'hydrostatic'
-    recompute_pressure = False
+    #recompute_pressure = False
 
     pgw_sim_name_ending = 'pgw'
     pgw_sim_name_ending = 'pgw2'
     pgw_sim_name_ending = 'pgw3'
     pgw_sim_name_ending = 'pgw4'
+    pgw_sim_name_ending = 'pgw5'
 
     pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)
     newtimestring = 'seconds since {:%Y-%m-%d %H:%M:%S}'.format(pgw_sim_start_date)

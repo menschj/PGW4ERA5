@@ -41,7 +41,7 @@ def fix_grid_coord_diffs(fix_ds, ref_ds):
     if np.max(np.abs(fix_ds.rlon.values - ref_ds.rlon.values)) > 1E-5:
         raise ValueError('Grids differ!')
     if np.mean(np.abs(fix_ds.rlon.values - ref_ds.rlon.values)) > 1E-8:
-        print('fix small differences in inputs grids.')
+        #print('fix small differences in inputs grids.')
         fix_ds['rlon'] = ref_ds.rlon
         fix_ds['rlat'] = ref_ds.rlat
 
@@ -262,23 +262,23 @@ def adjust_pressure_to_new_climate2(delta_inp_dir, delta_time_step,
     # using QC and QI does not reduce the error (also not increase)
     #TV0_hl = T0_hl * (1 + 0.61 * QV0_hl - QC0_hl - QI0_hl)
 
-    P0_comp_dir = xr.zeros_like(P0)
+    #P0_comp_dir = xr.zeros_like(P0)
     lnP0_comp_ln = xr.zeros_like(P0)
-    P1_comp_dir = xr.zeros_like(P0)
-    lnP1_comp_ln = xr.zeros_like(P0)
+    #P1_comp_dir = xr.zeros_like(P0)
+    #lnP1_comp_ln = xr.zeros_like(P0)
     lnP1_comp_ln_2 = xr.zeros_like(P0)
 
     # take upper-most value from BC
     top_pressure_0 = P0.sel(level=0)
     top_pressure_1 = P0.sel(level=0)
     #print(top_pressure_1.mean(dim=['rlon','rlat']).values)
-    top_pressure_1_2 = P0.sel(level=0) + delta_P.sel(level=0)*0.65
-    #print(top_pressure_1.mean(dim=['rlon','rlat']).values)
-    #quit()
-    P0_comp_dir.loc[dict(level=0)] = top_pressure_0
+    top_pressure_1_2 = P0.sel(level=0) + 0.86*delta_P.sel(level=0)
+    #top_pressure_1_2 = P0.sel(level=0) + delta_P.sel(level=0)
+
+    #P0_comp_dir.loc[dict(level=0)] = top_pressure_0
     lnP0_comp_ln.loc[dict(level=0)] = np.log(top_pressure_0)
-    P1_comp_dir.loc[dict(level=0)] = top_pressure_1 
-    lnP1_comp_ln.loc[dict(level=0)] = np.log(top_pressure_1)
+    #P1_comp_dir.loc[dict(level=0)] = top_pressure_1 
+    #lnP1_comp_ln.loc[dict(level=0)] = np.log(top_pressure_1)
     lnP1_comp_ln_2.loc[dict(level=0)] = np.log(top_pressure_1_2)
     
     # compute altitude change accross full level (dz)
@@ -293,7 +293,7 @@ def adjust_pressure_to_new_climate2(delta_inp_dir, delta_time_step,
 
     ## Method 1
     for lvi in range(0,np.max(dz.level.values)):
-        print(lvi)
+        #print(lvi)
         ## vertically integrate pressure
 
         ## base state
@@ -303,12 +303,12 @@ def adjust_pressure_to_new_climate2(delta_inp_dir, delta_time_step,
         )
         lnP0_comp_ln.loc[dict(level=lvi+1)] = lnP0_comp_ln.sel(level=lvi) + dlnP
 
-        ## future state
-        dlnP = (
-                - CON_G / (CON_RD * TV1_hl.sel(level1=lvi+1)) * 
-                dz_hl.sel(level1=lvi+1)
-        )
-        lnP1_comp_ln.loc[dict(level=lvi+1)] = lnP1_comp_ln.sel(level=lvi) + dlnP
+        ### future state
+        #dlnP = (
+        #        - CON_G / (CON_RD * TV1_hl.sel(level1=lvi+1)) * 
+        #        dz_hl.sel(level1=lvi+1)
+        #)
+        #lnP1_comp_ln.loc[dict(level=lvi+1)] = lnP1_comp_ln.sel(level=lvi) + dlnP
 
         ## future state (test)
         dlnP = (
@@ -319,8 +319,9 @@ def adjust_pressure_to_new_climate2(delta_inp_dir, delta_time_step,
 
     ## convert back to real pressure
     P0_comp_ln = np.exp(lnP0_comp_ln)
-    P1_comp_ln = np.exp(lnP1_comp_ln)
+    #P1_comp_ln = np.exp(lnP1_comp_ln)
     P1_comp_ln_2 = np.exp(lnP1_comp_ln_2)
+
 
     ## Method 2
     #P1 = P0 + P1_comp_ln-P0_comp_ln
@@ -342,9 +343,9 @@ def adjust_pressure_to_new_climate2(delta_inp_dir, delta_time_step,
     #    P1_comp_dir.loc[dict(level=lvi+1)] = P1_comp_dir.sel(level=lvi) + dP
 
 
-    # compute pressure change
-    delta_P_dir = P1_comp_dir-P0_comp_dir
-    delta_P_ln = P1_comp_ln-P0_comp_ln
+    ## compute pressure change
+    #delta_P_dir = P1_comp_dir-P0_comp_dir
+    #delta_P_ln = P1_comp_ln-P0_comp_ln
     delta_P_ln_2 = P1_comp_ln_2-P0_comp_ln
 
 
@@ -363,28 +364,28 @@ def adjust_pressure_to_new_climate2(delta_inp_dir, delta_time_step,
     #quit()
 
 
-    # plot results (change)
-    handles = []
-    #handle, = plt.plot(delta_P_dir.mean(dim=['rlon', 'rlat']),
-    #        alt.mean(dim=['rlon', 'rlat']), label='direct')
+    ## plot results (change)
+    #handles = []
+    ##handle, = plt.plot(delta_P_dir.mean(dim=['rlon', 'rlat']),
+    ##        alt.mean(dim=['rlon', 'rlat']), label='direct')
+    ##handles.append(handle)
+    #handle, = plt.plot(delta_P_ln_2.mean(dim=['rlon', 'rlat']),
+    #        alt.mean(dim=['rlon', 'rlat']), label='ln p_top(GCM)')
     #handles.append(handle)
-    handle, = plt.plot(delta_P_ln_2.mean(dim=['rlon', 'rlat']),
-            alt.mean(dim=['rlon', 'rlat']), label='ln p_top(GCM)')
-    handles.append(handle)
-    handle, = plt.plot(delta_P_ln.mean(dim=['rlon', 'rlat']),
-            alt.mean(dim=['rlon', 'rlat']), label='ln')
-    handles.append(handle)
-    handle, = plt.plot(delta_P.mean(dim=['rlon', 'rlat']),
-            alt.mean(dim=['rlon', 'rlat']), label='GCM')
-    handles.append(handle)
-    plt.ylabel('altitude [m]')
-    plt.xlabel('change [Pa]')
-    plt.legend(handles=handles)
-    plt.show()
-    quit()
+    #handle, = plt.plot(delta_P_ln.mean(dim=['rlon', 'rlat']),
+    #        alt.mean(dim=['rlon', 'rlat']), label='ln')
+    #handles.append(handle)
+    #handle, = plt.plot(delta_P.mean(dim=['rlon', 'rlat']),
+    #        alt.mean(dim=['rlon', 'rlat']), label='GCM')
+    #handles.append(handle)
+    #plt.ylabel('altitude [m]')
+    #plt.xlabel('change [Pa]')
+    #plt.legend(handles=handles)
+    #plt.show()
+    #quit()
 
     # replace PP in BC_file
-    BC_file['PP'].data = BC_file['PP'] + delta_P_dir
+    BC_file['PP'].data = BC_file['PP'] + delta_P_ln_2
     #print(BC_file['PP'])
 
     return(BC_file)

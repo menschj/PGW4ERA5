@@ -50,9 +50,8 @@ def regridhorizontal(infolder, variablename, n_out_time_steps,
     IMP = IterMP(njobs=njobs, run_async=True)
     fargs = {'grid_des_file':out_grid_file,}
     step_args = []
-    for stepnum in range(n_out_time_steps):
-    #for stepnum in range(1696,1696+11*8):
-    #for stepnum in range(1783,1783+22*8):
+    #for stepnum in range(n_out_time_steps):
+    for stepnum in range(1696,1696+21*8):
         #print(stepnum)
         infile = f"{infolder}/{variablename}{stepnum:05d}.nc"
         outfile = f"{outputfolder}/{variablename}{stepnum:05d}.nc"

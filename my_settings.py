@@ -5,6 +5,7 @@ from my_regrid_horizontal import regridhorizontal
 from interpolate import interpannualcycle
 from cclm_vertical import vertinterpol
 from package.utilities import cd
+from pathlib import Path
 ###############################################################################
 
 ## input arguments
@@ -79,10 +80,10 @@ if performinterp:
     ###########################################################################
     #see documentation in interpolate.py
     # run e.g. cdo sellonlatbox,-65,35,-45,30
-    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/MPI-ESM1-2-HR/'
+    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/MPI-ESM1-2-HR/alt2'
     gcm_data_freq = 'month'
 
-    out_path = '/scratch/snx3000/heimc/pgw/interpolated_alt/'
+    out_path = '/scratch/snx3000/heimc/pgw/interpolated_alt2/'
     ###########################################################################
 
     for var_name in var_names:  
@@ -99,12 +100,12 @@ if regridhori:
     ###########################################################################
     ### Namelist
     ###########################################################################
-    infolder = '/scratch/snx3000/heimc/pgw/interpolated_alt/'
+    infolder = '/scratch/snx3000/heimc/pgw/interpolated_alt2/'
 
-    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt_SA_12/'
+    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_12/'
     out_grid_file = 'target_grid_SA_12'
 
-    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt_SA_3/'
+    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_3/'
     out_grid_file = 'target_grid_SA_3'
     ###########################################################################
 
@@ -121,24 +122,22 @@ if regridhori:
 #this part is software/hardware specific for the piz daint supercomputer on CSCS
 if regridvert:
 
-    #constant_path = '/scratch/snx3000/heimc/pgw/constant_SA_12.nc'
-    #datapath = '/scratch/snx3000/heimc/pgw/regridded_alt_SA_12/'
-    #outputpath = '/scratch/snx3000/heimc/pgw/vertint_alt_SA_12/'
+    constant_path = '/scratch/snx3000/heimc/pgw/constant_SA_12.nc'
+    datapath = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_12/'
+    outputpath = '/scratch/snx3000/heimc/pgw/vertint_alt2_SA_12/'
 
-    constant_path = '/scratch/snx3000/heimc/pgw/constant_SA_3.nc'
-    datapath = '/scratch/snx3000/heimc/pgw/regridded_alt_SA_3/'
-    outputpath = '/scratch/snx3000/heimc/pgw/vertint_alt_SA_3/'
+    #constant_path = '/scratch/snx3000/heimc/pgw/constant_SA_3.nc'
+    #datapath = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_3/'
+    #outputpath = '/scratch/snx3000/heimc/pgw/vertint_alt2_SA_3/'
 
     i_submit = 1
     submit_dir = '/scratch/snx3000/heimc/pgw/submit/'
     #vcflat = 17827 #height where modellevels become flat
-    steps_per_job = 5 #split the job into multiple chucks and run in paralell
+    steps_per_job = 10 #split the job into multiple chucks and run in paralell
     lasttime = n_out_time_steps
     #starttime = 0
-    #starttime = 1696
-    starttime = 1783
-    #starttime = 1870
-    lasttime = starttime + 22 * 8
+    starttime = 1696
+    lasttime = starttime + 21 * 8
 
     # copy heights file and script to submission directory
     if i_submit:

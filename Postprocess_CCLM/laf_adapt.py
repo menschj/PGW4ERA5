@@ -179,7 +179,8 @@ if __name__ == "__main__":
     wd_path = '/scratch/snx3000/heimc/lmp/wd'
     changeyears = 0
     #Diffspath = '/scratch/snx3000/heimc/pgw/vertint_plev_{}'.format(sim_name_base)
-    Diffspath = '/scratch/snx3000/heimc/pgw/vertint_alt_{}'.format(sim_name_base)
+    #Diffspath = '/scratch/snx3000/heimc/pgw/vertint_alt_{}'.format(sim_name_base)
+    Diffspath = '/scratch/snx3000/heimc/pgw/vertint_alt2_{}'.format(sim_name_base)
     terrainpath = '/scratch/snx3000/heimc/pgw/constant_{}.nc'.format(sim_name_base)
 
     recompute_pressure = 'barometric'
