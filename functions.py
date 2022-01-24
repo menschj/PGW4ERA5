@@ -66,25 +66,29 @@ def add_delta(var, laffile, delta_inp_path, diff_time_step):
     #quit()
 
 
+def add_delta_era5(var_name, laffile, delta_inp_path,
+                    diff_time_step, laf_var_name=None):
+    delta = xr.open_dataset(
+            f'{delta_inp_path}/{var_name}{diff_time_step:05d}.nc')[var_name]
+    # if not given as input argument, use same var_name for laf file
+    # as for delta file
+    if laf_var_name is None:
+        laf_var_name = var_name
+    laffile[laf_var_name].values += delta 
+
 def add_delta_interp_era5(var_name, laffile, delta_inp_path, diff_time_step):
     delta = xr.open_dataset(
             f'{delta_inp_path}/{var_name}{diff_time_step:05d}.nc')[var_name]
-    print(delta)
+    #print(delta)
     delta = vert_interp_era5(delta, laffile, var_name)
-    print(delta)
-    quit()
-    ### HCH2021 start
-    ### There are small grid inconsistencies that have to be fixed... 
-    #fix_grid_coord_diffs(delta, laffile)
-    #fix_grid_coord_diffs(delta, laffile)
-    ### HCH 2021 stop
 
-    if 'time' in laffile[var].dims:
-        laffile[var].data[0,::] = (laffile[var].data[0,::] + 
-                            delta.data.astype('float32'))
-    else:
-        laffile[var].data = (laffile[var].data + 
-                            delta.data.astype('float32'))
+    #plt.plot(laffile[var_name].isel(time=0).mean(dim=['lon','lat']),
+    #        np.exp(laffile['lnP0'].isel(time=0)).mean(dim=['lon','lat']))
+    laffile[var_name] = laffile[var_name] + delta#.astype('float32')
+    #plt.plot(laffile[var_name].isel(time=0).mean(dim=['lon','lat']),
+    #        np.exp(laffile['lnP0'].isel(time=0)).mean(dim=['lon','lat']))
+    #plt.show()
+    #quit()
 
 
 
@@ -94,63 +98,39 @@ def vert_interp_era5(delta, laffile, var_name):
     xx = np.arange(len(delta.lon))
     yy = np.arange(len(delta.lat))
 
-    #get index for efficient computation (avoid loops)
+    # get index for efficient computation (avoid loops)
     yid, xid = np.ix_(yy,xx)
-    #print(yid.shape)
-    #print(xid.shape)
-    #print(ds_in[var_name].values.shape)
-    #print(cosmo_alt.values.shape)
-    #quit()
 
-    ## create output dataset
-    delta_out = laffile[var_name].copy()
-    #var_out = xr.DataArray(
-    #    data = np.zeros((len(laffile.level),len(yy),len(xx))),
-    #    dims = ['level','lat','lon'],
-    #)
-    #delta_out[var_name] = var_out
+    # create output dataset
+    delta_out = xr.zeros_like(laffile[var_name]).to_dataset()
+    var_out = xr.zeros_like(laffile[var_name])
+    delta_out[var_name] = var_out
 
-    #ds_out = ds_out.assign_coords({'level':cosmo_alt.level})
-    #ds_out = ds_out.assign_coords(
-    #        {'level':vcoord.values[:-1] + np.diff(vcoord.values)/2})
-    #        #dtype='int32')})
-    #ds_out = ds_out.drop('alt')
-    #print(ds_in)
-    #print()
-    #print(ds_out)
-    #quit()
+    # duplicate bottom layer value to 1050 hPa to avoid extrapolation
+    bottom = delta.sel(plev=100000).copy()
+    bottom['plev'] = 106000
+    delta = xr.concat([bottom, delta], dim='plev').transpose(
+                                'time', 'plev', 'lat', 'lon')
 
-    #print(delta.plev.values)
-    ##plt.plot(delta.isel(time=0).mean(dim=['lon','lat']),
-    ##        np.log(delta.plev.values))
-    ##plt.show()
-    #print(delta.isel(time=0).mean(dim=['lon','lat']))
+    # sort delta dataset from top to bottom (pressure ascending)
     delta = delta.reindex(plev=list(reversed(delta.plev)))
-    #print(delta.plev.values)
-    #print(delta.isel(time=0).mean(dim=['lon','lat']))
-    #quit()
-    plt.plot(delta.isel(time=0).mean(dim=['lon','lat']),
-            delta.plev.values)
-    plt.show()
-    #quit()
-    #print(delta.isel(time=0).shape)
-    #print(laffile['lnP0'].isel(time=0).shape)
-    #quit()
 
-    #get the 3D interpolation fucntion
+    # get the 3D interpolation fucntion
     fn = RegularGridInterpolator((np.log(delta.plev.values), yy, xx),
-                                delta.isel(time=0).values,
-                                bounds_error=False)
+                                delta.isel(time=0).values)#,
+                                #bounds_error=False)
 
-    #interpolate the data to the actual height in the model
-    #data.values = fn((cosmo_alt.values, yid, xid))
-    delta_out.loc[dict(time=delta_out.time[0])].values = fn(
-            (laffile['lnP0'].isel(time=0).values, yid, xid))
-    plt.plot(delta_out.isel(time=0).mean(dim=['lon','lat']),
-            np.exp(laffile['lnP0'].isel(time=0)).mean(dim=['lon','lat']))
-    plt.show()
-    quit()
-    return(delta_out)
+    #interpolate the data to the actual era5 pressure
+    delta_out[var_name].values = np.expand_dims(fn(
+            (laffile['lnP0'].isel(time=0).values, yid, xid)),axis=0)
+
+    #plt.plot(delta.isel(time=0).mean(dim=['lon','lat']),
+    #        delta.plev.values)
+    #plt.plot(delta_out[var_name].isel(time=0).mean(dim=['lon','lat']),
+    #        np.exp(laffile['lnP0'].isel(time=0)).mean(dim=['lon','lat']))
+    #plt.show()
+    #quit()
+    return(delta_out[var_name])
 
 
 

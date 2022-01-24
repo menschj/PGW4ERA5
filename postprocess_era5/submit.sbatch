@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #
-#SBATCH --job-name="post pgw5"
-#SBATCH --time=23:00:00
+#SBATCH --job-name="post pgw6"
+#SBATCH --time=03:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --partition=normal
 #SBATCH --output=/scratch/snx3000/heimc/pgw/out_scripts/out0
@@ -39,15 +39,15 @@ end_day=21
 start_dayhr=${start_day}00
 end_dayhr=${end_day}00
 #sim_start_date=${year}${start_month}${start_day}
-sim_start_date=${year}${start_month}01 # CH202112
+sim_start_date=${year}${start_month}0100 # CH202112
 
-#arg_f=2006080100
-#arg_l=2006091100
+arg_f=2006081515
+arg_l=2006082100
 
-arg_f=${year}${start_month}${start_dayhr}
-arg_l=${year}${end_month}${end_dayhr}
+#arg_f=${year}${start_month}${start_dayhr}
+#arg_l=${year}${end_month}${end_dayhr}
 
-srun -c $SLURM_CPUS_PER_TASK python -u my_lbfd_adapt.py -d 3 \
+srun -c $SLURM_CPUS_PER_TASK python -u laf_adapt.py -d 3 \
                 -f ${arg_f} -l ${arg_l} -s ${sim_start_date}
 
 

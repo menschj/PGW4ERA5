@@ -7,15 +7,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 from base.functions import (
-        specific_to_relative_humidity,
-        add_delta_interp_era5,
         hour_of_year,
-        get_alt_half_level, get_alt_full_level,
-        pressure_recompute, get_pref_old,
-        adjust_pressure_to_new_climate, 
-        adjust_pressure_to_new_climate2, 
-        get_pref, get_pref_sfc,
-        fix_grid_coord_diffs, add_delta)
+        specific_to_relative_humidity,
+        relative_to_specific_humidity,
+        add_delta_era5,
+        add_delta_interp_era5)
 """
 Can be used to add the calculated difference in all necessary variables to the initial condition (laf) file.
 This very fast, just run it in the console.
@@ -55,44 +51,15 @@ Output:
 
 
 
-def lafadapt(inp_laf_path, out_laf_path, delta_inp_path, delta_time_step, 
-            new_time_string, recompute_pressure):
-
-
-    #compute new humidity funcion once temperature and pressure were changed
-    def computeQVnew(laffile, RH_old, RH_S_old):
-        Diffrh = xr.open_dataset(f'{delta_inp_path}/RELHUM{delta_time_step:05d}.nc')['RELHUM']
-        Diffrh_s = xr.open_dataset(f'{delta_inp_path}/RELHUM_S{delta_time_step:05d}.nc')['RELHUM_S']
-        ### HCH2021 start
-        ### There are small grid inconsistencies that have to be fixed... 
-        fix_grid_coord_diffs(Diffrh, laffile)
-        fix_grid_coord_diffs(Diffrh_s, laffile)
-        ### HCH 2021 stop
-
-        newRH = RH_old.data + Diffrh.data.astype('float32')
-        newRH_S = RH_S_old.data + Diffrh_s.data.astype('float32')
-
-        p = laffile['PP'] + pref
-        T = laffile['T']
-        #p_sfc = np.squeeze(laffile['PP'][:,-1,:,:]) + pref_sfc
-        p_sfc = np.squeeze(laffile['PP'][:,-1,:,:]) + pref_hl.isel(level1=-1)
-        T_S = laffile['T_S']
-
-        newQV = (newRH.data  * np.exp(17.67*(T.data  - 273.15)/(T.data -29.65))) / ( 0.263 * p.data)
-        newQV_S = (newRH_S.data  * np.exp(17.67*(T_S.data  - 273.15)/(T_S.data -29.65))) / ( 0.263 * p_sfc.data)
-
-        laffile['QV'].data = newQV.astype('float32')
-        laffile['QV_S'].data = newQV_S.astype('float32')
-
-        return laffile
-
+def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
+            delta_time_step, new_time_string):
 
     laffile = xr.open_dataset(inp_laf_path, decode_cf=False)
     print('load done')
 
     laffile.time.attrs['units'] = new_time_string
 
-    # compute pressure
+    # compute pressure on era5 levels
     P0 = laffile['PS'].expand_dims(dim={'level':laffile.level})
     P0 = laffile.akm + P0 * laffile.bkm
     laffile['lnP0'] = np.log(P0)
@@ -102,7 +69,9 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path, delta_time_step,
 
     # get relative humidity in old laf
     RH0 = specific_to_relative_humidity(
-                    laffile['QV'], P0, laffile['T'])
+                    laffile['QV'], P0, laffile['T']).transpose(
+                                    'time', 'level', 'lat', 'lon')
+    laffile['RELHUM'] = RH0
     #plt.plot(RH0.mean(dim=['time','lon','lat']),
     #        P0.mean(dim=['time','lon','lat']))
     #plt.show()
@@ -111,18 +80,47 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path, delta_time_step,
 
     # interpolate deltas to era5 vertical grid and
     # shift variables to future climate
-    var_names = ['T', 'U', 'V']
+    var_names = ['T', 'U', 'V', 'RELHUM']
+    #var_names = ['T', 'U', 'V']
     for var_name in var_names:
         print('add {}'.format(var_name))
         add_delta_interp_era5(var_name, laffile, 
                         delta_inp_path, delta_time_step)
-    quit()
 
-    # Update surface pressure
+    # update surface pressure
+    var_name = 'PS'
+    print('add {}'.format(var_name))
+    add_delta_era5(var_name, laffile, delta_inp_path, delta_time_step)
+
+
+    # compute future climate pressure on era5 levels
+    P1 = laffile['PS'].expand_dims(dim={'level':laffile.level})
+    P1 = laffile.akm + P1 * laffile.bkm
+    laffile['P1'] = P1
+
 
     #apply moisture function
-    laffile = computeQVnew(laffile, RH_old, RH_S_old)
-    print('moisture')
+    #QV0 = laffile['QV'].copy()
+    QV1 = relative_to_specific_humidity(
+                    laffile['RELHUM'], P0, laffile['T']).transpose(
+                                    'time', 'level', 'lat', 'lon')
+    laffile['QV'] = QV1
+
+    # update T_SKIN 
+    var_name = 'T_S'
+    print('add {}'.format(var_name))
+    add_delta_era5(var_name, laffile, delta_inp_path,
+                    delta_time_step, laf_var_name='T_SKIN')
+
+    #plt.plot(QV0.isel(time=0).mean(dim=['lon','lat']),
+    #        np.exp(laffile['lnP0'].isel(time=0)).mean(dim=['lon','lat']))
+    #plt.plot(QV1.isel(time=0).mean(dim=['lon','lat']),
+    #        np.exp(laffile['lnP0'].isel(time=0)).mean(dim=['lon','lat']))
+    #plt.show()
+
+    del laffile['RELHUM']
+    del laffile['lnP0']
+    del laffile['P1']
 
     laffile.to_netcdf(out_laf_path, mode='w')
     laffile.close()
@@ -142,47 +140,55 @@ if __name__ == "__main__":
     # delta hour increments
     parser.add_argument('-d', '--delta_hour_inc', type=int, default=3)
     # sim start date 
-    parser.add_argument('-s', '--sim_start_date', type=str, default='20060801')
+    parser.add_argument('-s', '--sim_start_date', type=str, default='2006080100')
+    # first bc step to compute 
+    parser.add_argument('-f', '--first_bc_step', type=str, default='2006080200')
+    # last bc step to compute 
+    parser.add_argument('-l', '--last_bc_step', type=str, default='2006080300')
     # sim name excluding ctrl/pgw
     parser.add_argument('-n', '--sim_name_base', type=str, default='SA_3')
     args = parser.parse_args()
     print(args)
 
-    sim_start_date = datetime.strptime(args.sim_start_date, '%Y%m%d')
+    sim_start_date = datetime.strptime(args.sim_start_date, '%Y%m%d%H')
+    first_bc_step = datetime.strptime(args.first_bc_step, '%Y%m%d%H')
+    last_bc_step = datetime.strptime(args.last_bc_step, '%Y%m%d%H')
     sim_name_base = args.sim_name_base
     wd_path = '/scratch/snx3000/heimc/lmp/wd'
     changeyears = 0
     delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_era5'
     terrainpath = '/scratch/snx3000/heimc/pgw/constant_era5.nc'
 
-    recompute_pressure = 'barometric'
-    recompute_pressure = 'hydrostatic'
-    #recompute_pressure = False
-
     pgw_sim_name_ending = 'pgw6'
 
+
     pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)
-    new_time_string = 'seconds since {:%Y-%m-%d %H:%M:%S}'.format(pgw_sim_start_date)
-
-    inp_laf_path = os.path.join(wd_path, 
-            '{:%y%m%d}00_{}_ctrl/int2lm_in/cas{:%Y%m%d}000000.nc'.format(
-                        sim_start_date, sim_name_base, sim_start_date))
-
+    laf_dts = np.arange(first_bc_step,
+                        last_bc_step+timedelta(hours=args.delta_hour_inc),
+                        timedelta(hours=args.delta_hour_inc)).tolist()
     out_laf_dir = os.path.join(wd_path, 
                     '{:%y%m%d}00_{}_{}/int2lm_in/'.format(
                         sim_start_date, sim_name_base, pgw_sim_name_ending))
+
     #if output directory doesn't exist create it
     Path(out_laf_dir).mkdir(parents=True, exist_ok=True)
 
-    #init_dt = datetime(2006,8,1,0)
-    init_dt = sim_start_date
-    delta_time_step = int(hour_of_year(init_dt)/args.delta_hour_inc)
-    print('use time step {}'.format(delta_time_step))
+    for laf_dt in laf_dts:
+        print(laf_dt)
 
-    out_laf_path = os.path.join(out_laf_dir, 
-            'cas{:%Y%m%d}000000.nc'.format(pgw_sim_start_date))
-    print(out_laf_path)
+        new_laf_dt = laf_dt + relativedelta(years=changeyears)
+        new_time_string = 'seconds since {:%Y-%m-%d %H:%M:%S}'.format(new_laf_dt)
 
-    lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
-            delta_time_step, new_time_string,
-            recompute_pressure)
+        inp_laf_path = os.path.join(wd_path, 
+                '{:%y%m%d}00_{}_ctrl/int2lm_in/cas{:%Y%m%d%H}0000.nc'.format(
+                            sim_start_date, sim_name_base, laf_dt))
+
+        delta_time_step = int(hour_of_year(laf_dt)/args.delta_hour_inc)
+        print('use time step {}'.format(delta_time_step))
+
+        out_laf_path = os.path.join(out_laf_dir, 
+                'cas{:%Y%m%d%H}0000.nc'.format(new_laf_dt))
+        print(out_laf_path)
+
+        lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
+                delta_time_step, new_time_string)
