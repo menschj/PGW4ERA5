@@ -3,7 +3,7 @@
 import subprocess, os, argparse
 from my_regrid_horizontal import regridhorizontal
 from interpolate import interpannualcycle
-from era5_vertical import vertinterpol
+#from era5_vertical import vertinterpol
 from package.utilities import cd
 from pathlib import Path
 ###############################################################################
@@ -22,9 +22,9 @@ args = parser.parse_args()
 print(args)
 
 performsmooth   = 0
-performinterp   = 0
-regridhori      = 0
-regridvert      = 1
+performinterp   = 1
+regridhori      = 1
+regridvert      = 0 # not used anymore for era5
 
 # number of output time steps in total
 n_out_time_steps = 366 * args.n_per_day
@@ -34,10 +34,12 @@ var_name_map = {
         'hurs'  :'RELHUM_S',
         'ta'    :'T', 
         'tas'   :'T_S', 
-        'pa'    :'PP', 
+        #'pa'    :'PP',  # does not work for plev
         'ps'    :'PS', 
         'ua'    :'U', 
-        'va'    :'V'}
+        'va'    :'V',
+        'zg'    :'PHI',
+        }
 var_names = args.var_names.split(',')
 for var_name in var_names:
     if var_name not in var_name_map:

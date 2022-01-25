@@ -6,12 +6,18 @@ from dateutil.relativedelta import relativedelta
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+from scipy.interpolate import RegularGridInterpolator
 from base.functions import (
         hour_of_year,
         specific_to_relative_humidity,
         relative_to_specific_humidity,
         add_delta_era5,
-        add_delta_interp_era5)
+        add_delta_interp_era5,
+        integ_geopot_era5,
+        integ_geopot_downward_era5,
+        integ_pressure_era5,
+        )
+from constants import CON_G
 """
 Can be used to add the calculated difference in all necessary variables to the initial condition (laf) file.
 This very fast, just run it in the console.
@@ -60,51 +66,81 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     laffile.time.attrs['units'] = new_time_string
 
     # compute pressure on era5 levels
-    P0 = laffile['PS'].expand_dims(dim={'level':laffile.level})
-    P0 = laffile.akm + P0 * laffile.bkm
-    laffile['lnP0'] = np.log(P0)
+    P = laffile['PS'].expand_dims(dim={'level':laffile.level})
+    P = laffile.akm + P * laffile.bkm
+    #laffile['lnP0'] = np.log(P)
+    P_hl = laffile['PS'].expand_dims(dim={'level1':laffile.level1})
+    P_hl = laffile.ak + P_hl * laffile.bk
+    laffile['P'] = P
+    laffile['P_hl'] = P_hl
     #plt.plot(P0.mean(dim=['time','lon','lat']),laffile.level)
     #plt.show()
     #quit()
 
-    # get relative humidity in old laf
-    RH0 = specific_to_relative_humidity(
-                    laffile['QV'], P0, laffile['T']).transpose(
-                                    'time', 'level', 'lat', 'lon')
-    laffile['RELHUM'] = RH0
-    #plt.plot(RH0.mean(dim=['time','lon','lat']),
-    #        P0.mean(dim=['time','lon','lat']))
+    # integrate geopotential
+    PHI, PHI_hl = integ_geopot_era5(laffile)
+
+    # add climate change delta to geopotential
+    laffile['PHI_hl'] = PHI_hl
+    add_delta_interp_era5('PHI', laffile, 
+                delta_inp_path, delta_time_step,
+                laf_var_name='PHI_hl',
+                half_levels=True, delta_fact=CON_G)
+
+    #plt.plot(laffile['PHI_hl'].mean(dim=['time','lon','lat']), laffile.level1)
+    #plt.plot(PHI_hl.mean(dim=['time','lon','lat']), laffile.level1)
     #plt.show()
     #quit()
+
+    # compute relative humidity in ERA climate
+    laffile['RELHUM'] = specific_to_relative_humidity(
+            laffile['QV'], laffile['P'], laffile['T']).transpose(
+                                    'time', 'level', 'lat', 'lon')
     print('rh done')
 
     # interpolate deltas to era5 vertical grid and
     # shift variables to future climate
     var_names = ['T', 'U', 'V', 'RELHUM']
-    #var_names = ['T', 'U', 'V']
+    var_names = ['T', 'RELHUM']
+    #var_names = []
     for var_name in var_names:
         print('add {}'.format(var_name))
         add_delta_interp_era5(var_name, laffile, 
                         delta_inp_path, delta_time_step)
 
+    # compute QV of future climate (assume pressure of ERA climate)
+    laffile['QV'].values = relative_to_specific_humidity(
+            laffile['RELHUM'], laffile['P'], laffile['T']).transpose(
+                                    'time', 'level', 'lat', 'lon').values
+
+
+    ## take surface pressure change from GCM
+    #var_name = 'PS'
+    #print('add {}'.format(var_name))
+    #add_delta_era5(var_name, laffile, delta_inp_path, delta_time_step,
+    #                delta_fact=-1)
+
     # update surface pressure
-    var_name = 'PS'
-    print('add {}'.format(var_name))
-    add_delta_era5(var_name, laffile, delta_inp_path, delta_time_step)
+    PS = integ_pressure_era5(laffile)
+    (PS-laffile['PS']).to_netcdf('test.nc')
+    laffile['PS'].values = PS.values
+    quit()
+
+    ## update surface pressure
+    #PS = integ_geopot_downward_era5(laffile)
+    #(PS-laffile['PS']).to_netcdf('test.nc')
+    #var_name = 'PS'
+    #print('add {}'.format(var_name))
+    #add_delta_era5(var_name, laffile, delta_inp_path, delta_time_step)
+    #quit()
 
 
-    # compute future climate pressure on era5 levels
-    P1 = laffile['PS'].expand_dims(dim={'level':laffile.level})
-    P1 = laffile.akm + P1 * laffile.bkm
-    laffile['P1'] = P1
+    ## compute future climate pressure on era5 levels
+    #P1 = laffile['PS'].expand_dims(dim={'level':laffile.level})
+    #P1 = laffile.akm + P1 * laffile.bkm
+    #laffile['P1'] = P1
 
 
-    #apply moisture function
-    #QV0 = laffile['QV'].copy()
-    QV1 = relative_to_specific_humidity(
-                    laffile['RELHUM'], P0, laffile['T']).transpose(
-                                    'time', 'level', 'lat', 'lon')
-    laffile['QV'] = QV1
 
     # update T_SKIN 
     var_name = 'T_S'
@@ -119,8 +155,10 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     #plt.show()
 
     del laffile['RELHUM']
-    del laffile['lnP0']
-    del laffile['P1']
+    del laffile['P']
+    del laffile['P_hl']
+    del laffile['PHI']
+    del laffile['PHI_hl']
 
     laffile.to_netcdf(out_laf_path, mode='w')
     laffile.close()

@@ -67,24 +67,32 @@ def add_delta(var, laffile, delta_inp_path, diff_time_step):
 
 
 def add_delta_era5(var_name, laffile, delta_inp_path,
-                    diff_time_step, laf_var_name=None):
+                    diff_time_step, laf_var_name=None,
+                    delta_fact=1):
     delta = xr.open_dataset(
             f'{delta_inp_path}/{var_name}{diff_time_step:05d}.nc')[var_name]
     # if not given as input argument, use same var_name for laf file
     # as for delta file
     if laf_var_name is None:
         laf_var_name = var_name
-    laffile[laf_var_name].values += delta 
 
-def add_delta_interp_era5(var_name, laffile, delta_inp_path, diff_time_step):
+    #delta.to_netcdf('test2.nc')
+    laffile[laf_var_name].values += delta * delta_fact
+
+
+def add_delta_interp_era5(var_name, laffile, delta_inp_path,
+                        diff_time_step, laf_var_name=None,
+                        half_levels=False, delta_fact=1):
     delta = xr.open_dataset(
             f'{delta_inp_path}/{var_name}{diff_time_step:05d}.nc')[var_name]
     #print(delta)
-    delta = vert_interp_era5(delta, laffile, var_name)
+    if laf_var_name is None:
+        laf_var_name = var_name
+    delta = vert_interp_era5(delta, laffile, laf_var_name, half_levels)
 
     #plt.plot(laffile[var_name].isel(time=0).mean(dim=['lon','lat']),
     #        np.exp(laffile['lnP0'].isel(time=0)).mean(dim=['lon','lat']))
-    laffile[var_name] = laffile[var_name] + delta#.astype('float32')
+    laffile[laf_var_name] = laffile[laf_var_name] + delta * delta_fact
     #plt.plot(laffile[var_name].isel(time=0).mean(dim=['lon','lat']),
     #        np.exp(laffile['lnP0'].isel(time=0)).mean(dim=['lon','lat']))
     #plt.show()
@@ -92,7 +100,7 @@ def add_delta_interp_era5(var_name, laffile, delta_inp_path, diff_time_step):
 
 
 
-def vert_interp_era5(delta, laffile, var_name):
+def vert_interp_era5(delta, laffile, var_name, half_levels=False):
 
     #grid dimensions for interpolation function
     xx = np.arange(len(delta.lon))
@@ -121,16 +129,156 @@ def vert_interp_era5(delta, laffile, var_name):
                                 #bounds_error=False)
 
     #interpolate the data to the actual era5 pressure
+    if half_levels:
+        pressure_type = 'P_hl'
+    else:
+        pressure_type = 'P'
     delta_out[var_name].values = np.expand_dims(fn(
-            (laffile['lnP0'].isel(time=0).values, yid, xid)),axis=0)
+            (np.log(laffile[pressure_type]).isel(time=0).values, yid, xid)),axis=0)
 
     #plt.plot(delta.isel(time=0).mean(dim=['lon','lat']),
     #        delta.plev.values)
     #plt.plot(delta_out[var_name].isel(time=0).mean(dim=['lon','lat']),
-    #        np.exp(laffile['lnP0'].isel(time=0)).mean(dim=['lon','lat']))
+    #        laffile[pressure_type].isel(time=0).mean(dim=['lon','lat']))
     #plt.show()
     #quit()
     return(delta_out[var_name])
+
+
+
+def integ_geopot_downward_era5(laffile):
+    """
+    """
+    start_level = 80 # ~ 400 hPa
+
+    # take log half-level pressure difference (located at full levels)
+    dlnP = np.log(laffile['P_hl']).diff(
+            dim='level1', label='lower').rename({'level1':'level'})
+
+    # create geopotential array and fill with surface geopotential
+    PHI_hl = laffile['PHI_hl'].copy()
+
+    # compute virtual temperature
+    TV = laffile['T'] * (1 + 0.61 * laffile['QV'])
+
+    for l in range(start_level,np.max(TV.level.values)+1):
+        print(l)
+        # geopotential at full level
+        PHI_hl.loc[dict(level1=l+1)] = (
+                PHI_hl.sel(level1=l) -
+                (CON_RD * TV.sel(level=l) * dlnP.sel(level=l))
+        )
+        print(np.sum(PHI_hl.sel(level1=l+1) - laffile['FIS'] < 0).values)
+        print((PHI_hl.sel(level1=l+1) - laffile['FIS']).mean(
+            dim=['lon','lat','time']).values/CON_G)
+    quit()
+
+            
+    PHI = PHI.transpose('time', 'level', 'lat', 'lon')
+    PHI_hl = PHI_hl.transpose('time', 'level1', 'lat', 'lon')
+
+    return(PHI, PHI_hl)
+
+
+
+
+
+def integ_geopot_era5(laffile):
+    """
+    """
+    # take log half-level pressure difference (located at full levels)
+    dlnP = np.log(laffile['P_hl']).diff(dim='level1', label='lower').rename({'level1':'level'})
+
+    # create geopotential array and fill with surface geopotential
+    PHI_hl = laffile['FIS'].expand_dims(dim={'level1':laffile.level1}).copy()
+    PHI = laffile['FIS'].expand_dims(dim={'level':laffile.level}).copy()
+
+    # compute virtual temperature
+    TV = laffile['T'] * (1 + 0.61 * laffile['QV'])
+
+    for l in sorted(TV.level.values, reverse=True):
+        #print(l)
+        # geopotential at full level
+        PHI_hl.loc[dict(level1=l)] = (
+                PHI_hl.sel(level1=l+1) +
+                (CON_RD * TV.sel(level=l) * dlnP.sel(level=l))
+        )
+
+        # geopotential at half level
+        alpha = 1. - (
+                (laffile['P_hl'].sel(level1=l) / 
+                (laffile['P_hl'].sel(level1=l+1) - laffile['P_hl'].sel(level1=l))) * 
+                dlnP.sel(level=l)
+        )
+        PHI.loc[dict(level=l)] = (
+                PHI_hl.sel(level1=l+1) +
+                (CON_RD * TV.sel(level=l) * alpha)
+        )
+            
+    PHI = PHI.transpose('time', 'level', 'lat', 'lon')
+    PHI_hl = PHI_hl.transpose('time', 'level1', 'lat', 'lon')
+
+    return(PHI, PHI_hl)
+
+
+def integ_pressure_era5(laffile):
+    """
+    Function to compute pressure change from temperature and humidity
+    changes to maintain hydrostatic balance.
+
+    Hydrostatic equation to be solved:
+    dln(p) / dz = -g / (R * Tv)
+    """
+    start_level = 30 
+    #print(laffile['P_hl'].sel(level1=start_level))
+    #quit()
+
+    TV = laffile['T'] * (1 + 0.61 * laffile['QV'])
+
+    lnP_hl = np.log(laffile['P_hl'])
+    
+    # compute altitude change accross full level (dz)
+    dz = laffile['PHI_hl'].diff('level1', label='lower').rename(
+            {'level1':'level'}) / CON_G
+
+    # vertically integrate pressure
+    for l in range(start_level,np.max(dz.level.values)+1):
+        #print(l)
+
+        # change of log pressure with level
+        dlnP = (
+                - CON_G / (CON_RD * TV.sel(level=l)) * 
+                dz.sel(level=l)
+        )
+        lnP_hl.loc[dict(level1=l+1)] = lnP_hl.sel(level1=l) + dlnP
+
+    
+    P_hl = np.exp(lnP_hl)
+
+    #print(P_hl.mean(dim=['time','lon','lat']))
+    #print(laffile['P_hl'].mean(dim=['time','lon','lat']))
+    #print((P_hl-laffile['P_hl']).mean(dim=['time','lon','lat']))
+    
+    #plt.plot((P_hl-laffile['P_hl']).mean(dim=['time','lon','lat']))
+    #plt.show()
+
+    # take surface pressure
+    PS = P_hl.sel(level1=np.max(P_hl.level1))
+    return(PS)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -253,6 +401,28 @@ def interp_cubic(x_out, x_in, data_in):
                 #fill_value='extrapolate', bounds_error=False)
     out = f(x_out)
     return(out)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
