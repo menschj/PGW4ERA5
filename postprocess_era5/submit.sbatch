@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #
-#SBATCH --job-name="post pgw6"
-#SBATCH --time=03:00:00
+#SBATCH --job-name="post pgw8"
+#SBATCH --time=23:30:00
 #SBATCH --cpus-per-task=12
 #SBATCH --partition=normal
 #SBATCH --output=/scratch/snx3000/heimc/pgw/out_scripts/out0
@@ -41,7 +41,7 @@ end_dayhr=${end_day}00
 #sim_start_date=${year}${start_month}${start_day}
 sim_start_date=${year}${start_month}0100 # CH202112
 
-arg_f=2006081515
+arg_f=2006080100
 arg_l=2006082100
 
 #arg_f=${year}${start_month}${start_dayhr}

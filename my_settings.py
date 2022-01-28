@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*- 
 ###############################################################################
 import subprocess, os, argparse
+import xarray as xr
+#import xesmf as xe
 from my_regrid_horizontal import regridhorizontal
 from interpolate import interpannualcycle
 #from era5_vertical import vertinterpol
-from package.utilities import cd
+from package.utilities import cd, cdo_remap
 from pathlib import Path
 ###############################################################################
 
@@ -22,8 +24,9 @@ args = parser.parse_args()
 print(args)
 
 performsmooth   = 0
-performinterp   = 1
-regridhori      = 1
+performinterp   = 0
+regridhori      = 0
+regridhorinew   = 1
 regridvert      = 0 # not used anymore for era5
 
 # number of output time steps in total
@@ -124,6 +127,40 @@ if regridhori:
         regridhorizontal(infolder, var_name_map[var_name], n_out_time_steps,
                         out_grid_file, outputfolder, njobs=args.n_par)
 
+
+
+if regridhorinew:
+    ###########################################################################
+    ### Namelist
+    ###########################################################################
+    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/MPI-ESM1-2-HR/plev'
+    delta_name_base='plev_{}_delta.nc'
+
+    out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5/'
+    #out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test/'
+    out_grid_file = 'target_grid_era5'
+    #out_grid_file = 'target_grid_era5_test'
+    #target_file_path = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_ctrl/int2lm_in'
+    ###########################################################################
+
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+
+    #get the python command and write a file to submit to the piz daint machine
+    #comandreghor = f"python regrid_horizontal.py {infolder} {variable} {n_out_time_steps} {outputgridfile} {outputfolder} &> out_regrid.txt &" 
+    #subprocess.run(comandreghor, shell=True)
+    for var_name in var_names:
+        print('regrid horizontal {}'.format(var_name))
+        inp_file = os.path.join(gcm_data_path, delta_name_base.format(var_name))
+        out_file = os.path.join(out_dir, 'delta_{}.nc'.format(var_name))
+        #print(inp_file)
+        #print(out_file)
+        cdo_remap(out_grid_file, inp_file, out_file, method='bil')
+        #target_file = os.path.join(target_file_path, 'cas20060805000000.nc')
+        #ds_gcm = xr.open_dataset(inp_file)
+        #ds_target = xr.open_dataset(target_file)
+        #regridder = xe.Regridder(ds_gcm, ds_target, "bilinear")
+        ##dr_out = regridder(dr)
+        #quit()
 
 
 #this part is software/hardware specific for the piz daint supercomputer on CSCS
