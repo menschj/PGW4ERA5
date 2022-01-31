@@ -19,7 +19,7 @@ from base.functions import (
         integ_pressure_upward_era5,
         load_delta,
         debug_interp,
-        interp_vprof,
+        interp_nonfixed,
         )
 from constants import CON_G, CON_RD
 """
@@ -129,7 +129,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     #p_refs = [85000, 50000, 10000]
     p_refs = [100000,70000,30000,10000]
     #p_refs = [85000,30000]
-    #p_refs = [10000]
+    p_refs = [100000]
     #p_refs = [30000]
     #p_refs = [85000]
     #p_refs = [50000, 40000, 30000, 20000, 10000]
@@ -197,7 +197,9 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         delta_PS = xr.zeros_like(laffile.PS)
         adj_PS = xr.zeros_like(laffile.PS)
         phi_ref_rmse = np.inf
-        #for it in range(20):
+
+        P_last = P_era
+
         it = 0
         while phi_ref_rmse > thresh_phi_ref_rmse:
 
@@ -207,6 +209,13 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
 
             # recompute pressure on half levels
             P_hl_pgw = laffile.ak + (laffile.PS + delta_PS) * laffile.bk
+
+            P_pgw = laffile.akm + (laffile.PS + delta_PS) * laffile.bkm
+            if not P_last.equals(P_pgw):
+                print('interp')
+                vars_pgw['T'] = interp_nonfixed(vars_pgw['T'], P_last, P_pgw, 'level', 'level')
+                vars_pgw['QV'] = interp_nonfixed(vars_pgw['QV'], P_last, P_pgw, 'level', 'level')
+                P_last = P_pgw
 
             # compute updated geopotential at reference pressure
             PHI_hl_pgw, phi_ref_pgw, phi_ref_star_pgw = integ_geopot_era5(P_hl_pgw,
@@ -223,22 +232,22 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
 
 
             # DEBUG
-            print('phi hl pgw')
-            print(PHI_hl_pgw.sel(level1=slice(131,138)).mean(dim=['lon','lat','time']).values/CON_G)
+            #print('phi hl pgw')
+            #print(PHI_hl_pgw.sel(level1=slice(131,138)).mean(dim=['lon','lat','time']).values/CON_G)
 
             #print('phi hl era')
             #print(PHI_hl_era.sel(level1=slice(131,138)).mean(dim=['lon','lat','time']).values/CON_G)
 
-            print('dphi hl era')
-            dPHI_hl = PHI_hl_pgw - PHI_hl_era
-            print(dPHI_hl.sel(level1=slice(131,138)).mean(dim=['lon','lat','time']).values/CON_G)
+            #print('dphi hl era')
+            #dPHI_hl = PHI_hl_pgw - PHI_hl_era
+            #print(dPHI_hl.sel(level1=slice(131,138)).mean(dim=['lon','lat','time']).values/CON_G)
 
             #print('phi hl pgw start')
             #print(PHI_hl_pgw_start.sel(level1=slice(131,138)).mean(dim=['lon','lat','time']).values/CON_G)
              
-            print('dphi hl pgw start')
-            dPHI_hl = PHI_hl_pgw - PHI_hl_pgw_start
-            print(dPHI_hl.sel(level1=slice(131,138)).mean(dim=['lon','lat','time']).values/CON_G)
+            #print('dphi hl pgw start')
+            #dPHI_hl = PHI_hl_pgw - PHI_hl_pgw_start
+            #print(dPHI_hl.sel(level1=slice(131,138)).mean(dim=['lon','lat','time']).values/CON_G)
 
             # error in future geopotential
             phi_ref_error = delta_phi_ref - climate_delta_phi_ref
@@ -277,6 +286,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         PHI_hl_pgw_delta = debug_interp(out_vars[p_ref]['PHI_hl_pgw_delta'], 
                                   out_vars[p_ref]['P_hl_pgw_delta'])
         dPHI_hl = PHI_hl_pgw - PHI_hl_era
+        print(dPHI_hl)
         dPHI_hl_pgw_start = PHI_hl_pgw_start - PHI_hl_era
         dPHI_hl_pgw_delta = PHI_hl_pgw_delta - PHI_hl_era
 
@@ -288,8 +298,8 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         PS_era = debug_interp(laffile.PS)
         dPS = PS_pgw - PS_era
 
-        #(out_vars[p_ref]['PS_pgw']-laffile.PS).to_netcdf(
-        #            'delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref, laf_dt))
+        (out_vars[p_ref]['PS_pgw']-laffile.PS).to_netcdf(
+                    'delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref, laf_dt))
         #dPHI_hl.to_netcdf(
         #            'delta_phi_{}_{:%Y%m%d%H}.nc'.format(p_ref, laf_dt))
 
@@ -336,6 +346,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     dPHI_gcm = load_delta(delta_inp_path, var_name_map['PHI'],
                     laf_dt, laffile.time, delta_time_step).sel(plev=slice(100000,10000))
     dPHI_gcm = debug_interp(dPHI_gcm)
+    print(dPHI_gcm)
     dPS_gcm = load_delta(delta_inp_path, var_name_map['PS'],
                         laf_dt, laffile.time, delta_time_step)
     dPS_gcm = debug_interp(dPS_gcm)

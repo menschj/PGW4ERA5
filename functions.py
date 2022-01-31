@@ -138,15 +138,25 @@ def vert_interp_era5(delta, var, target_P):
 
 
 
-def interp(var, P, targ_p):
-    targ = xr.zeros_like(var).isel(level1=range(len(targ_p)))
+def interp_nonfixed(var, P, targ_p, inp_vdim_name, out_vdim_name):
+    targ = xr.zeros_like(var).isel({inp_vdim_name:range(len(targ_p))})
+    tmp = interp_vprof(var.values.squeeze(), np.log(P.values.squeeze()),
+                        np.log(targ_p.squeeze()), 
+                        targ.values.squeeze(),
+                        len(var.lat), len(var.lon))
+    tmp = np.expand_dims(tmp, axis=0)
+    targ.values = tmp
+    return(targ)
+
+def interp(var, P, targ_p, inp_vdim_name):
+    targ = xr.zeros_like(var).isel({inp_vdim_name:range(len(targ_p))})
     tmp = interp_vprof(var.values.squeeze(), np.log(P.values.squeeze()),
                         np.log(targ_p), 
                         targ.values.squeeze(),
                         len(var.lat), len(var.lon))
     tmp = np.expand_dims(tmp, axis=0)
     targ.values = tmp
-    targ = targ.rename({'level1':'plev'})
+    targ = targ.rename({inp_vdim_name:'plev'})
     targ = targ.assign_coords(plev=targ_p)
     return(targ)
 
@@ -167,8 +177,15 @@ def debug_interp(var, P=None):
     #    var = var.assign_coords(plev=np.exp(var.plev))
 
 
+
     if P is not None:
-        var = interp(var, P, plevs)
+        if 'level1' in var.dims:
+            inp_vdim_name = 'level1'
+        elif 'level' in var.dims:
+            inp_vdim_name = 'level'
+        else:
+            raise NotImplementedError()
+        var = interp(var, P, plevs, inp_vdim_name)
         var = var.mean(dim=['time','lon','lat'])
     else:
         var = var.mean(dim=['time','lon','lat'])
@@ -179,21 +196,34 @@ def debug_interp(var, P=None):
 
 #@njit()
 def interp_vprof(orig_array, src_p,
-                targ_p_col, interp_array,
+                targ_p, interp_array,
                 nlat, nlon):
     """
     Helper function for compute_VARNORMI. Speedup of ~100 time
     compared to pure python code!
     """
-    for lat_ind in range(nlat):
-        for lon_ind in range(nlon):
-            src_val_col = orig_array[:, lat_ind, lon_ind]
-            src_p_col = src_p[:, lat_ind, lon_ind]
-            ## np.interpo does not work for extrapolation 
-            #interp_col = np.interp(targ_p_col, src_p_col, src_val_col)
-            f = interp1d(src_p_col, src_val_col, fill_value='extrapolate')
-            interp_col = f(targ_p_col)
-            interp_array[:, lat_ind, lon_ind] = interp_col
+    if len(targ_p.shape) == 1:
+        targ_p_col = targ_p
+        for lat_ind in range(nlat):
+            for lon_ind in range(nlon):
+                src_val_col = orig_array[:, lat_ind, lon_ind]
+                src_p_col = src_p[:, lat_ind, lon_ind]
+                ## np.interpo does not work for extrapolation 
+                #interp_col = np.interp(targ_p_col, src_p_col, src_val_col)
+                f = interp1d(src_p_col, src_val_col, fill_value='extrapolate')
+                interp_col = f(targ_p_col)
+                interp_array[:, lat_ind, lon_ind] = interp_col
+    else:
+        for lat_ind in range(nlat):
+            for lon_ind in range(nlon):
+                src_val_col = orig_array[:, lat_ind, lon_ind]
+                src_p_col = src_p[:, lat_ind, lon_ind]
+                targ_p_col = targ_p[:, lat_ind, lon_ind]
+                ## np.interpo does not work for extrapolation 
+                #interp_col = np.interp(targ_p_col, src_p_col, src_val_col)
+                f = interp1d(src_p_col, src_val_col, fill_value='extrapolate')
+                interp_col = f(targ_p_col)
+                interp_array[:, lat_ind, lon_ind] = interp_col
     return(interp_array)
 
 
