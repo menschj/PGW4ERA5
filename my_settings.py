@@ -136,10 +136,15 @@ if regridhorinew:
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/MPI-ESM1-2-HR/plev'
     delta_name_base='plev_{}_delta.nc'
 
+    #gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/test2/MPI-ESM1-2-HR'
+    #delta_name_base='plev_{}_delta.nc'
+
     out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5/'
     #out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test/'
-    out_grid_file = 'target_grid_era5'
+    out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test2/'
+    #out_grid_file = 'target_grid_era5'
     #out_grid_file = 'target_grid_era5_test'
+    out_grid_file = 'target_grid_era5_test2'
     #target_file_path = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_ctrl/int2lm_in'
     ###########################################################################
 

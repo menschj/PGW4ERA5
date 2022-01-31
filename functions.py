@@ -10,6 +10,7 @@ import os
 import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
+from numba import njit
 from datetime import datetime,timedelta
 from dateutil.relativedelta import relativedelta
 from package.utilities import dt64_to_dt
@@ -48,7 +49,7 @@ def fix_grid_coord_diffs(fix_ds, ref_ds):
         fix_ds['rlat'] = ref_ds.rlat
 
 
-def load_delta(delta_inp_path, var_name, date_time, diff_time_step):
+def load_delta(delta_inp_path, var_name, date_time, laf_time, diff_time_step):
     delta_year = xr.open_dataset(os.path.join(delta_inp_path,
                             'delta_{}.nc'.format(var_name)))
 
@@ -56,34 +57,36 @@ def load_delta(delta_inp_path, var_name, date_time, diff_time_step):
     for i in range(len(delta_year.time)):
         delta_year.time.values[i] = dt64_to_dt(
                     delta_year.time[i]).replace(year=date_time.year)
+
     # interpolate in time and select variable
     delta = delta_year[var_name].interp(time=date_time, 
                                 method='linear', 
                             ).expand_dims(dim='time', axis=0)
+    # make sure time is in the same format as in laf file
+    delta['time'] = laf_time
 
     #delta = xr.open_dataset(
     #        f'{delta_inp_path}/{var_name}{diff_time_step:05d}.nc')[var_name]
     return(delta)
 
 
-def add_delta_era5(var_name, laffile, delta_inp_path,
-                    diff_time_step, date_time, laf_var_name=None,
+def add_delta_era5(var, var_name, laffile, delta_inp_path,
+                    diff_time_step, date_time,
                     delta_fact=1):
-    delta = load_delta(delta_inp_path, var_name, date_time, diff_time_step)
+    delta = load_delta(delta_inp_path, var_name, date_time, laffile.time,
+                        diff_time_step)
+    delta = delta.assign_coords({'lat':var.lat.values})
 
-    # if not given as input argument, use same var_name for laf file
-    # as for delta file
-    if laf_var_name is None:
-        laf_var_name = var_name
 
-    #delta.to_netcdf('test2.nc')
-    laffile[laf_var_name].values += delta * delta_fact
+    var = var + delta * delta_fact
+    return(var)
 
 
 def add_delta_interp_era5(var, target_P, var_name, laffile, delta_inp_path,
                         diff_time_step, date_time, 
                         half_levels=False, delta_fact=1):
-    delta = load_delta(delta_inp_path, var_name, date_time, diff_time_step)
+    delta = load_delta(delta_inp_path, var_name, date_time, laffile.time,
+                        diff_time_step)
 
     # interpolate delta onto ERA5 vertical grid
     delta = vert_interp_era5(delta, var, target_P)
@@ -135,6 +138,67 @@ def vert_interp_era5(delta, var, target_P):
 
 
 
+def interp(var, P, targ_p):
+    targ = xr.zeros_like(var).isel(level1=range(len(targ_p)))
+    tmp = interp_vprof(var.values.squeeze(), np.log(P.values.squeeze()),
+                        np.log(targ_p), 
+                        targ.values.squeeze(),
+                        len(var.lat), len(var.lon))
+    tmp = np.expand_dims(tmp, axis=0)
+    targ.values = tmp
+    targ = targ.rename({'level1':'plev'})
+    targ = targ.assign_coords(plev=targ_p)
+    return(targ)
+
+def debug_interp(var, P=None):
+    plevs = [102000, 100000, 92500, 85000, 70000, 60000, 50000, 40000, 30000, 25000,
+    20000, 15000, 10000]
+
+    #lon = -15
+    #lat = -15
+    #var = var.isel({'time':0})
+    #var = var.interp({'lon':lon,'lat':lat})
+    #if P is not None:
+    #    P = P.isel({'time':0})
+    #    P = P.interp({'lon':lon,'lat':lat})
+    #    var = var.assign_coords(level1=np.log(P.values))
+    #    var = var.rename({'level1':'plev'})
+    #    var = var.interp(plev=np.log(plevs), kwargs={'fill_value':'extrapolate'})
+    #    var = var.assign_coords(plev=np.exp(var.plev))
+
+
+    if P is not None:
+        var = interp(var, P, plevs)
+        var = var.mean(dim=['time','lon','lat'])
+    else:
+        var = var.mean(dim=['time','lon','lat'])
+
+    return(var)
+
+
+
+#@njit()
+def interp_vprof(orig_array, src_p,
+                targ_p_col, interp_array,
+                nlat, nlon):
+    """
+    Helper function for compute_VARNORMI. Speedup of ~100 time
+    compared to pure python code!
+    """
+    for lat_ind in range(nlat):
+        for lon_ind in range(nlon):
+            src_val_col = orig_array[:, lat_ind, lon_ind]
+            src_p_col = src_p[:, lat_ind, lon_ind]
+            ## np.interpo does not work for extrapolation 
+            #interp_col = np.interp(targ_p_col, src_p_col, src_val_col)
+            f = interp1d(src_p_col, src_val_col, fill_value='extrapolate')
+            interp_col = f(targ_p_col)
+            interp_array[:, lat_ind, lon_ind] = interp_col
+    return(interp_array)
+
+
+
+
 def integ_geopot_era5(P_hl, FIS, T, QV, level1, p_ref):
     """
     """
@@ -183,14 +247,16 @@ def integ_geopot_era5(P_hl, FIS, T, QV, level1, p_ref):
     #plt.show()
     ind_ref_star = p_diff.argmin(dim='level1')
     #ind_ref_star.to_netcdf('test.nc')
-    #print(ind_ref_star)
     hl_ref_star = p_diff.level1.isel(level1=ind_ref_star)
+    #print(hl_ref_star.mean().values)
     #hl_ref_star.to_netcdf('test.nc')
     #print(hl_ref_star)
     p_ref_star = P_hl.sel(level1=hl_ref_star)
+    #print('{} p ref '.format(p_ref_star.mean().values))
     #p_ref_star.to_netcdf('test.nc')
     #print(p_ref_star)
     phi_ref_star = PHI_hl.sel(level1=hl_ref_star)
+    #print('{} phi ref '.format(phi_ref_star.mean().values/CON_G))
     #phi_ref_star.to_netcdf('test.nc')
     #print(phi_ref_star)
 
