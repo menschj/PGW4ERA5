@@ -80,28 +80,20 @@ def add_delta_era5(var_name, laffile, delta_inp_path,
     laffile[laf_var_name].values += delta * delta_fact
 
 
-def add_delta_interp_era5(var_name, laffile, delta_inp_path,
-                        diff_time_step, date_time, laf_var_name=None,
+def add_delta_interp_era5(var, target_P, var_name, laffile, delta_inp_path,
+                        diff_time_step, date_time, 
                         half_levels=False, delta_fact=1):
     delta = load_delta(delta_inp_path, var_name, date_time, diff_time_step)
 
-    if laf_var_name is None:
-        laf_var_name = var_name
-
     # interpolate delta onto ERA5 vertical grid
-    delta = vert_interp_era5(delta, laffile, laf_var_name, half_levels)
+    delta = vert_interp_era5(delta, var, target_P)
 
-    #plt.plot(laffile[var_name].isel(time=0).mean(dim=['lon','lat']),
-    #        np.exp(laffile['lnP0'].isel(time=0)).mean(dim=['lon','lat']))
-    laffile[laf_var_name] = laffile[laf_var_name] + delta * delta_fact
-    #plt.plot(laffile[var_name].isel(time=0).mean(dim=['lon','lat']),
-    #        np.exp(laffile['lnP0'].isel(time=0)).mean(dim=['lon','lat']))
-    #plt.show()
-    #quit()
+    var = var + delta * delta_fact
+    return(var)
 
 
 
-def vert_interp_era5(delta, laffile, var_name, half_levels=False):
+def vert_interp_era5(delta, var, target_P):
 
     #grid dimensions for interpolation function
     xx = np.arange(len(delta.lon))
@@ -111,9 +103,9 @@ def vert_interp_era5(delta, laffile, var_name, half_levels=False):
     yid, xid = np.ix_(yy,xx)
 
     # create output dataset
-    delta_out = xr.zeros_like(laffile[var_name]).to_dataset()
-    var_out = xr.zeros_like(laffile[var_name])
-    delta_out[var_name] = var_out
+    delta_out = xr.zeros_like(var).to_dataset()
+    var_out = xr.zeros_like(var)
+    delta_out['var'] = var_out
 
     # duplicate bottom layer value to 1050 hPa to avoid extrapolation
     bottom = delta.sel(plev=100000).copy()
@@ -130,12 +122,8 @@ def vert_interp_era5(delta, laffile, var_name, half_levels=False):
                                 #bounds_error=False)
 
     #interpolate the data to the actual era5 pressure
-    if half_levels:
-        pressure_type = 'P_hl'
-    else:
-        pressure_type = 'P'
-    delta_out[var_name].values = np.expand_dims(fn(
-            (np.log(laffile[pressure_type]).isel(time=0).values, yid, xid)),axis=0)
+    delta_out['var'].values = np.expand_dims(fn(
+            (np.log(target_P).isel(time=0).values, yid, xid)),axis=0)
 
     #plt.plot(delta.isel(time=0).mean(dim=['lon','lat']),
     #        delta.plev.values)
@@ -143,23 +131,23 @@ def vert_interp_era5(delta, laffile, var_name, half_levels=False):
     #        laffile[pressure_type].isel(time=0).mean(dim=['lon','lat']))
     #plt.show()
     #quit()
-    return(delta_out[var_name])
+    return(delta_out['var'])
 
 
 
-def integ_geopot_era5(laffile, p_ref):
+def integ_geopot_era5(P_hl, FIS, T, QV, level1, p_ref):
     """
     """
     # take log half-level pressure difference (located at full levels)
-    dlnP = np.log(laffile['P_hl']).diff(
+    dlnP = np.log(P_hl).diff(
                 dim='level1', label='lower').rename({'level1':'level'})
 
     # create geopotential array and fill with surface geopotential
-    PHI_hl = laffile['FIS'].expand_dims(dim={'level1':laffile.level1}).copy()
+    PHI_hl = FIS.expand_dims(dim={'level1':level1}).copy()
     #PHI = laffile['FIS'].expand_dims(dim={'level':laffile.level}).copy()
 
     # compute virtual temperature
-    TV = laffile['T'] * (1 + 0.61 * laffile['QV'])
+    TV = T * (1 + 0.61 * QV)
 
     ## integrate over model half levels
     for l in sorted(TV.level.values, reverse=True):
@@ -188,7 +176,7 @@ def integ_geopot_era5(laffile, p_ref):
 
     ## integrate from last half-level below reference pressure
     ## up to reference pressure
-    p_diff = laffile['P_hl'] - p_ref
+    p_diff = P_hl - p_ref
     p_diff = p_diff.where(p_diff > 0, np.nan)
     #plt.plot(test.mean(dim=['lon','lat','time']),
     #        laffile['P_hl'].mean(dim=['lon','lat','time']))
@@ -199,7 +187,7 @@ def integ_geopot_era5(laffile, p_ref):
     hl_ref_star = p_diff.level1.isel(level1=ind_ref_star)
     #hl_ref_star.to_netcdf('test.nc')
     #print(hl_ref_star)
-    p_ref_star = laffile['P_hl'].sel(level1=hl_ref_star)
+    p_ref_star = P_hl.sel(level1=hl_ref_star)
     #p_ref_star.to_netcdf('test.nc')
     #print(p_ref_star)
     phi_ref_star = PHI_hl.sel(level1=hl_ref_star)
