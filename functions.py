@@ -120,12 +120,14 @@ def vert_interp_era5(delta, var, target_P):
 
     # get the 3D interpolation fucntion
     fn = RegularGridInterpolator((np.log(delta.plev.values), yy, xx),
+    #fn = RegularGridInterpolator((delta.plev.values, yy, xx),
                                 delta.isel(time=0).values)#,
                                 #bounds_error=False)
 
     #interpolate the data to the actual era5 pressure
     delta_out['var'].values = np.expand_dims(fn(
             (np.log(target_P).isel(time=0).values, yid, xid)),axis=0)
+            #(target_P.isel(time=0).values, yid, xid)),axis=0)
 
     #plt.plot(delta.isel(time=0).mean(dim=['lon','lat']),
     #        delta.plev.values)
@@ -137,10 +139,16 @@ def vert_interp_era5(delta, var, target_P):
 
 
 
-def interp_nonfixed(var, P, targ_p, inp_vdim_name, out_vdim_name):
-    targ = xr.zeros_like(var).isel({inp_vdim_name:range(len(targ_p))})
-    tmp = interp_vprof(var.values.squeeze(), np.log(P.values.squeeze()),
-                        np.log(targ_p.squeeze()), 
+def interp_nonfixed(var, source_P, targ_P, inp_vdim_name, out_vdim_name):
+    targ = xr.zeros_like(targ_P)
+    #print(var.shape)
+    #print(source_P.shape)
+    #print(targ_P.shape)
+    #quit()
+    #tmp = interp_vprof(var.values.squeeze(), source_P.values.squeeze(),
+    #                    targ_P.squeeze(), 
+    tmp = interp_vprof(var.values.squeeze(), np.log(source_P.values.squeeze()),
+                        np.log(targ_P.squeeze()), 
                         targ.values.squeeze(),
                         len(var.lat), len(var.lon))
     tmp = np.expand_dims(tmp, axis=0)
@@ -270,7 +278,7 @@ def integ_geopot_era5(P_hl, FIS, T, QV, level1, p_ref):
     ## integrate from last half-level below reference pressure
     ## up to reference pressure
     p_diff = P_hl - p_ref
-    p_diff = p_diff.where(p_diff > 0, np.nan)
+    p_diff = p_diff.where(p_diff >= 0, np.nan)
     #plt.plot(test.mean(dim=['lon','lat','time']),
     #        laffile['P_hl'].mean(dim=['lon','lat','time']))
     #plt.show()

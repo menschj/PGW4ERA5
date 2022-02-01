@@ -56,22 +56,26 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
 
 
     # compute pressure on era5 levels
-    P_era = laffile['PS'].expand_dims(dim={'level':laffile.level})
-    P_era = laffile.akm + P_era * laffile.bkm
-    #laffile['lnP0'] = np.log(P)
-    P_hl_era = laffile['PS'].expand_dims(dim={'level1':laffile.level1})
-    P_hl_era = laffile.ak + P_hl_era * laffile.bk
-    #laffile['P'] = P
-    #laffile['P_hl'] = P_hl
-    #plt.plot(P.mean(dim=['time','lon','lat']),laffile.level)
-    #plt.show()
-    #quit()
+    P_era = (laffile.akm + laffile.PS * laffile.bkm).transpose(
+                'time','level','lat','lon')
+    P_hl_era = (laffile.ak + laffile.PS * laffile.bk).transpose(
+                'time','level1','lat','lon')
+
 
     # compute relative humidity in ERA climate state
     laffile['RELHUM'] = specific_to_relative_humidity(
             laffile.QV, P_era, laffile.T).transpose(
                                     'time', 'level', 'lat', 'lon')
     print('rh computed')
+
+
+    #handle, = plt.plot(laffile.POTT.mean(dim=['time','lon','lat']),
+    #            P_era.mean(dim=['time','lon','lat']),
+    #        label='direct')
+    #plt.xlim(290,310)
+    #plt.ylim(103000,80000)
+    #plt.show()
+    #quit()
 
 
     ## integrate geopotential upward
@@ -95,10 +99,12 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
 
     ############################## NEW VERSION START
     p_refs = [100000, 85000, 70000, 50000, 30000, 10000]
-    #p_refs = [85000, 50000, 10000]
-    p_refs = [100000,70000,30000,10000]
-    p_refs = [100000,50000]
-    #p_refs = [85000,30000]
+    p_refs = [85000, 50000, 10000]
+    p_refs = [85000, 70000, 50000, 30000]
+    #p_refs = [100000,70000,30000,10000]
+    #p_refs = [100000,50000]
+    p_refs = [92500,70000,50000,10000]
+    p_refs = [92500,70000]
     #p_refs = [100000]
     #p_refs = [30000]
     #p_refs = [85000]
@@ -106,36 +112,34 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     #p_refs = [50000, 10000]
     adj_factor = 0.95
     thresh_phi_ref_rmse = 0.05
-    i_plot_type = 0
+    i_plot_type = 1
     max_n_iter = 6
-    var_names = ['T', 'U', 'V', 'RELHUM']
-    var_names = ['T', 'RELHUM']
-
-    #delta_PS_GCM = get_delta_era5(laffile.PS,
-    #                var_name_map['PS'], laffile, 
-    #                delta_inp_path, delta_time_step, laf_dt)
-    #print(delta_PS_GCM)
-    #laffile['PS'] += delta_PS
+    #var_names = ['T', 'U', 'V', 'RELHUM']
+    #var_names = ['T', 'RELHUM']
 
 
-    vars_pgw = {}
 
-    for var_name in var_names:
-        print('add {}'.format(var_name))
-        vars_pgw[var_name] = laffile[var_name] + get_delta_interp_era5(
-                        laffile[var_name],
-                        P_era, var_name_map[var_name], laffile, 
-                        delta_inp_path, delta_time_step, laf_dt)
+    #vars_pgw = {}
 
-    ## compute QV of future climate (assume pressure of ERA climate)
-    vars_pgw['QV'] = laffile.QV.copy()
-    vars_pgw['QV'].values = relative_to_specific_humidity(
-            vars_pgw['RELHUM'], P_era, vars_pgw['T']).transpose(
-                                'time', 'level', 'lat', 'lon').values
+    #for var_name in var_names:
+    #    print('add {}'.format(var_name))
+    #    vars_pgw[var_name] = laffile[var_name] + get_delta_interp_era5(
+    #                    laffile[var_name],
+    #                    P_era, var_name_map[var_name], laffile, 
+    #                    delta_inp_path, delta_time_step, laf_dt)
+
+    ### compute QV of future climate (assume pressure of ERA climate)
+    #vars_pgw['QV'] = laffile.QV.copy()
+    #vars_pgw['QV'].values = relative_to_specific_humidity(
+    #        vars_pgw['RELHUM'], P_era, vars_pgw['T']).transpose(
+    #                            'time', 'level', 'lat', 'lon').values
 
     out_vars = {}
     for p_ref in p_refs:
+        print('#################################################################')
+        print('#################################################################')
         print('p_ref {}'.format(p_ref))
+        print('#################################################################')
         out_vars[p_ref] = {}
 
         # compute original geopotential
@@ -144,25 +148,6 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         out_vars[p_ref]['PHI_hl_era'] = PHI_hl_era.copy() / CON_G
         out_vars[p_ref]['phi_ref_era'] = phi_ref_era.copy() / CON_G
         out_vars[p_ref]['P_hl_era'] = P_hl_era.copy().transpose('time','level1','lat','lon')
-
-        # compute future geopotential at reference pressure (without ps adjustment)
-        P_hl_pgw = laffile.ak + laffile.PS * laffile.bk
-        PHI_hl_pgw_start, phi_ref_pgw_start, phi_ref_star_pgw_start = integ_geopot_era5(P_hl_pgw,
-                laffile.FIS, vars_pgw['T'], vars_pgw['QV'], laffile.level1, p_ref)
-        out_vars[p_ref]['PHI_hl_pgw_start'] = PHI_hl_pgw_start.copy() / CON_G
-        out_vars[p_ref]['phi_ref_pgw_start'] = phi_ref_pgw_start.copy() / CON_G
-
-
-        PS_pgw_delta = laffile.PS + get_delta_era5(laffile.PS,
-                        var_name_map['PS'], laffile, 
-                        delta_inp_path, delta_time_step, laf_dt)
-        P_hl_pgw_delta = laffile.ak + PS_pgw_delta * laffile.bk
-        PHI_hl_pgw_delta, phi_ref_pgw_delta, phi_ref_star_pgw_delta = integ_geopot_era5(P_hl_pgw_delta,
-                laffile.FIS, vars_pgw['T'], vars_pgw['QV'], laffile.level1, p_ref)
-        out_vars[p_ref]['PHI_hl_pgw_delta'] = PHI_hl_pgw_delta.copy() / CON_G
-        out_vars[p_ref]['phi_ref_pgw_delta'] = phi_ref_pgw_delta.copy() / CON_G
-        out_vars[p_ref]['P_hl_pgw_delta'] = P_hl_pgw_delta.copy()
-
 
         # load climate delta for reference pressure level
         climate_delta_phi_ref = load_delta(delta_inp_path, var_name_map['PHI'],
@@ -173,9 +158,16 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         ## procedure
         delta_PS = xr.zeros_like(laffile.PS)
         adj_PS = xr.zeros_like(laffile.PS)
-        phi_ref_rmse = np.inf
+         
+        ## TODO debug start
+        delta_PS_GCM = get_delta_era5(laffile.PS,
+                        var_name_map['PS'], laffile, 
+                        delta_inp_path, delta_time_step, laf_dt)
+        #adj_PS = delta_PS_GCM
+        #climate_delta_phi_ref.values[:] = 0 * CON_G
+        ## TODO debug stop
 
-        P_last = P_era
+        phi_ref_rmse = np.inf
 
         it = 0
         while phi_ref_rmse > thresh_phi_ref_rmse:
@@ -183,20 +175,46 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
             # update surface pressure
             delta_PS += adj_PS
             print('{} delta_PS'.format(delta_PS.mean().values))
+            PS_pgw = laffile.PS + delta_PS
 
             # recompute pressure on half levels
-            P_hl_pgw = laffile.ak + (laffile.PS + delta_PS) * laffile.bk
+            P_pgw = (laffile.akm + PS_pgw * laffile.bkm).transpose(
+                        'time','level','lat','lon')
+            P_hl_pgw = (laffile.ak + PS_pgw * laffile.bk).transpose(
+                        'time','level1','lat','lon')
 
-            #P_pgw = laffile.akm + (laffile.PS + delta_PS) * laffile.bkm
-            #if not P_last.equals(P_pgw):
-            #    #print('interp')
-            #    vars_pgw['T'] = interp_nonfixed(vars_pgw['T'], P_last, P_pgw, 'level', 'level')
-            #    vars_pgw['QV'] = interp_nonfixed(vars_pgw['QV'], P_last, P_pgw, 'level', 'level')
-            #    P_last = P_pgw
+            # interpolate variables onto new model levels
+            #if np.sum(adj_PS.values != 0):
+            var_name = 'T'
+            T_era = interp_nonfixed(laffile.T, 
+                            P_era, P_pgw, 'level', 'level')
+            dT = get_delta_interp_era5(
+                    laffile[var_name],
+                    P_pgw, var_name_map[var_name], laffile, 
+                    delta_inp_path, delta_time_step, laf_dt)
+            T_pgw = T_era + dT
+
+            var_name = 'RELHUM'
+            RELHUM_era = interp_nonfixed(laffile.RELHUM, 
+                            P_era, P_pgw, 'level', 'level')
+            dRELHUM = get_delta_interp_era5(
+                    laffile[var_name],
+                    P_pgw, var_name_map[var_name], laffile, 
+                    delta_inp_path, delta_time_step, laf_dt)
+            RELHUM_pgw = RELHUM_era + dRELHUM
+
+            # convert relative humidity to speicifc humidity in pgw
+            QV_pgw = relative_to_specific_humidity(
+                        RELHUM_pgw, P_pgw, T_pgw)
+
+            ## TODO DEBUG start
+            #T_pgw = laffile.T
+            #QV_pgw = laffile.QV
+            ## TODO DEBUG stop
 
             # compute updated geopotential at reference pressure
             PHI_hl_pgw, phi_ref_pgw, phi_ref_star_pgw = integ_geopot_era5(P_hl_pgw,
-                    laffile.FIS, vars_pgw['T'], vars_pgw['QV'], laffile.level1, p_ref)
+                    laffile.FIS, T_pgw, QV_pgw, laffile.level1, p_ref)
             #print('{} phi_ref_pgw'.format(phi_ref_pgw.mean().values/CON_G))
             #print('{} phi_ref_star'.format(phi_ref_star_pgw.mean().values/CON_G))
 
@@ -204,31 +222,14 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
             #print('{} delta_phi_ref'.format(delta_phi_ref.mean().values/CON_G))
             #print('{} GCM delta_phi_ref'.format(climate_delta_phi_ref.mean().values/CON_G))
 
-
-            # DEBUG
-            #print('phi hl pgw')
-            #print(PHI_hl_pgw.sel(level1=slice(131,138)).mean(dim=['lon','lat','time']).values/CON_G)
-
-            #print('phi hl era')
-            #print(PHI_hl_era.sel(level1=slice(131,138)).mean(dim=['lon','lat','time']).values/CON_G)
-
-            #print('dphi hl era')
-            #dPHI_hl = PHI_hl_pgw - PHI_hl_era
-            #print(dPHI_hl.sel(level1=slice(131,138)).mean(dim=['lon','lat','time']).values/CON_G)
-
-            #print('phi hl pgw start')
-            #print(PHI_hl_pgw_start.sel(level1=slice(131,138)).mean(dim=['lon','lat','time']).values/CON_G)
-             
-            #print('dphi hl pgw start')
-            #dPHI_hl = PHI_hl_pgw - PHI_hl_pgw_start
-            #print(dPHI_hl.sel(level1=slice(131,138)).mean(dim=['lon','lat','time']).values/CON_G)
-
             # error in future geopotential
             phi_ref_error = delta_phi_ref - climate_delta_phi_ref
+            #print('{} dphi deviation'.format(phi_ref_error.mean().values/CON_G))
 
-            adj_PS = - adj_factor * (laffile.PS + delta_PS) / (CON_RD * 
-                    vars_pgw['T'].sel(level=np.max(laffile.level))) * phi_ref_error
+            adj_PS = - adj_factor * PS_pgw / (CON_RD * 
+                    T_pgw.sel(level=np.max(laffile.level))) * phi_ref_error
             del adj_PS['level']
+            #print('{} adj_PS'.format(adj_PS.mean().values))
 
             phi_ref_rmse = np.sqrt(np.square(phi_ref_error).mean()).values
             print('####### iteration {:03d}, phi rmse: {}'.format(it, phi_ref_rmse))
@@ -262,14 +263,8 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
                                   out_vars[p_ref]['P_hl_era'])
         PHI_hl_pgw = debug_interp(out_vars[p_ref]['PHI_hl_pgw'],
                                   out_vars[p_ref]['P_hl_pgw'])
-        PHI_hl_pgw_start = debug_interp(out_vars[p_ref]['PHI_hl_pgw_start'], 
-                                  out_vars[p_ref]['P_hl_era'])
-        PHI_hl_pgw_delta = debug_interp(out_vars[p_ref]['PHI_hl_pgw_delta'], 
-                                  out_vars[p_ref]['P_hl_pgw_delta'])
         dPHI_hl = PHI_hl_pgw - PHI_hl_era
         #print(dPHI_hl)
-        dPHI_hl_pgw_start = PHI_hl_pgw_start - PHI_hl_era
-        dPHI_hl_pgw_delta = PHI_hl_pgw_delta - PHI_hl_era
 
         phi_ref_era = debug_interp(out_vars[p_ref]['phi_ref_era'])
         phi_ref_pgw = debug_interp(out_vars[p_ref]['phi_ref_pgw'])
@@ -279,39 +274,17 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         PS_era = debug_interp(laffile.PS)
         dPS = PS_pgw - PS_era
 
-        #dPHI_hl.to_netcdf(
-        #            'delta_phi_{}_{:%Y%m%d%H}.nc'.format(p_ref, laf_dt))
-
-        #print(P_hl_era.mean(dim=['time','lon','lat']).values)
-        #print(out_vars[p_ref]['PHI_hl_era'].mean(dim=['time','lon','lat']).values)
-        #print(dPHI_hl.mean(dim=['time','lon','lat']).values)
-        #quit()
-
         if i_plot_type == 1:
-            #plt.scatter(dphi_ref.mean(dim=['time','lon','lat']), p_ref)
-            #handle, = plt.plot(dPHI_hl.mean(dim=['time','lon','lat']),
-            #                    P_hl_era.mean(dim=['time','lon','lat']),
-            #                    label=p_ref)
-            #handles.append(handle)
-
             plt.scatter(dphi_ref, p_ref)
             handle, = plt.plot(dPHI_hl, dPHI_hl.plev, label=p_ref)
             handles.append(handle)
-
-            #handle, = plt.plot(dPHI_hl_pgw_start, dPHI_hl_pgw_start.plev,
-            #                    label='{} start'.format(p_ref))
-            #handles.append(handle)
-
-            #handle, = plt.plot(dPHI_hl_pgw_delta, dPHI_hl_pgw_delta.plev,
-            #                    label='{} delta'.format(p_ref))
-            #handles.append(handle)
 
             plt.xlabel('dphi [m]')
 
         elif i_plot_type == 2:
             dPS = dPS.where(dPS != 0, 0.001)
             plt.scatter((dphi_ref/dPS), p_ref)
-            handle, = plt.plot((dPHI_hl/dPS), P_hl_pgw, label=p_ref)
+            handle, = plt.plot((dPHI_hl/dPS), dPHI_hl.plev, label=p_ref)
             handles.append(handle)
             plt.xlabel('dphi/dps [m/Pa]')
 
@@ -336,9 +309,10 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         handles.append(handle)
 
     elif i_plot_type == 2:
-        handle, = plt.plot((dPHI_gcm/dPS_gcm),
-                            dPHI_gcm.plev, label='GCM', color='k')
-        handles.append(handle)
+        pass
+        #handle, = plt.plot((dPHI_gcm/dPS_gcm),
+        #                    dPHI_gcm.plev, label='GCM', color='k')
+        #handles.append(handle)
 
     elif i_plot_type == 3:
         handle = plt.axvline(x=dPS_gcm,
