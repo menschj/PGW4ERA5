@@ -11,8 +11,8 @@ from base.functions import (
         hour_of_year,
         specific_to_relative_humidity,
         relative_to_specific_humidity,
-        add_delta_era5,
-        add_delta_interp_era5,
+        get_delta_era5,
+        get_delta_interp_era5,
         integ_geopot_era5,
         integ_geopot_downward_era5,
         integ_pressure_era5,
@@ -22,38 +22,6 @@ from base.functions import (
         interp_nonfixed,
         )
 from constants import CON_G, CON_RD
-"""
-Can be used to add the calculated difference in all necessary variables to the initial condition (laf) file.
-This very fast, just run it in the console.
-It requires the difference in relative humidity to adapt the specific humidity!
-
-Input:
-	inp_laf_path: Path to the original laf-file from the "base" simulation
-	(e.g. reanalysis driven or historical simulation). The name of the laf file
-	must be as outputted by int2lm (e.g. laf1970010100.nc ).
-
-	newyear: What year to use in the files (change it to the future to adapt CO2 levels)
-
-	delta_time_step: Which timestep within the annual cycle is apropriate to adapt
-	the laf file? (0 for beginning of year; otherwise dayofyear*timesteps_per_day)
-
-	new_time_string: What timestamp should be used for the adapted laf file?
-	Put the exact time of the new laf file in the format 'seconds since yyyy-mm-dd hh:mm:ss'
-
-	out_laf_dir: In which folder should the adapted laf file be put (
-	probably the same as the adapted boudary or lbfd files). Will be created if nonexistent.
-
-	delta_inp_path: Where is the input located, i.e. the single files that have been
-	reviously produced by the interpolate.py routie or the regridding routines.
-	These are the files called for example T00000.nc
-
-	recompute_pressure: Boolean to indicate whether the pressure of the boundary
-	files should be recomputed based on temperature changes (not necessary if a
-	difference file for PP already exists (e.g. from previous cosmo simulation).
-
-Output:
-	The adapted laf file will be written to the chosen location and should directly be usable for CCLM.
-"""
 
 
 var_name_map = {
@@ -85,6 +53,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     print('load done')
 
     laffile.time.attrs['units'] = new_time_string
+
 
     # compute pressure on era5 levels
     P_era = laffile['PS'].expand_dims(dim={'level':laffile.level})
@@ -128,25 +97,33 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     p_refs = [100000, 85000, 70000, 50000, 30000, 10000]
     #p_refs = [85000, 50000, 10000]
     p_refs = [100000,70000,30000,10000]
+    p_refs = [100000,50000]
     #p_refs = [85000,30000]
-    p_refs = [100000]
+    #p_refs = [100000]
     #p_refs = [30000]
     #p_refs = [85000]
     #p_refs = [50000, 40000, 30000, 20000, 10000]
     #p_refs = [50000, 10000]
     adj_factor = 0.95
     thresh_phi_ref_rmse = 0.05
-    i_plot_type = 1
-
-
+    i_plot_type = 0
+    max_n_iter = 6
     var_names = ['T', 'U', 'V', 'RELHUM']
     var_names = ['T', 'RELHUM']
-    #var_names = ['T']
-    #var_names = []
+
+    #delta_PS_GCM = get_delta_era5(laffile.PS,
+    #                var_name_map['PS'], laffile, 
+    #                delta_inp_path, delta_time_step, laf_dt)
+    #print(delta_PS_GCM)
+    #laffile['PS'] += delta_PS
+
+
     vars_pgw = {}
+
     for var_name in var_names:
         print('add {}'.format(var_name))
-        vars_pgw[var_name] = add_delta_interp_era5(laffile[var_name],
+        vars_pgw[var_name] = laffile[var_name] + get_delta_interp_era5(
+                        laffile[var_name],
                         P_era, var_name_map[var_name], laffile, 
                         delta_inp_path, delta_time_step, laf_dt)
 
@@ -176,7 +153,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         out_vars[p_ref]['phi_ref_pgw_start'] = phi_ref_pgw_start.copy() / CON_G
 
 
-        PS_pgw_delta = add_delta_era5(laffile.PS,
+        PS_pgw_delta = laffile.PS + get_delta_era5(laffile.PS,
                         var_name_map['PS'], laffile, 
                         delta_inp_path, delta_time_step, laf_dt)
         P_hl_pgw_delta = laffile.ak + PS_pgw_delta * laffile.bk
@@ -210,25 +187,22 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
             # recompute pressure on half levels
             P_hl_pgw = laffile.ak + (laffile.PS + delta_PS) * laffile.bk
 
-            P_pgw = laffile.akm + (laffile.PS + delta_PS) * laffile.bkm
-            if not P_last.equals(P_pgw):
-                print('interp')
-                vars_pgw['T'] = interp_nonfixed(vars_pgw['T'], P_last, P_pgw, 'level', 'level')
-                vars_pgw['QV'] = interp_nonfixed(vars_pgw['QV'], P_last, P_pgw, 'level', 'level')
-                P_last = P_pgw
+            #P_pgw = laffile.akm + (laffile.PS + delta_PS) * laffile.bkm
+            #if not P_last.equals(P_pgw):
+            #    #print('interp')
+            #    vars_pgw['T'] = interp_nonfixed(vars_pgw['T'], P_last, P_pgw, 'level', 'level')
+            #    vars_pgw['QV'] = interp_nonfixed(vars_pgw['QV'], P_last, P_pgw, 'level', 'level')
+            #    P_last = P_pgw
 
             # compute updated geopotential at reference pressure
             PHI_hl_pgw, phi_ref_pgw, phi_ref_star_pgw = integ_geopot_era5(P_hl_pgw,
                     laffile.FIS, vars_pgw['T'], vars_pgw['QV'], laffile.level1, p_ref)
-            print('{} phi_ref_pgw'.format(phi_ref_pgw.mean().values/CON_G))
-            print('{} phi_ref_star'.format(phi_ref_star_pgw.mean().values/CON_G))
-
-            #phi_ref_star_pgw.to_netcdf(
-            #            'prs_{}.nc'.format(it))
+            #print('{} phi_ref_pgw'.format(phi_ref_pgw.mean().values/CON_G))
+            #print('{} phi_ref_star'.format(phi_ref_star_pgw.mean().values/CON_G))
 
             delta_phi_ref = phi_ref_pgw - phi_ref_era
-            print('{} delta_phi_ref'.format(delta_phi_ref.mean().values/CON_G))
-            print('{} GCM delta_phi_ref'.format(climate_delta_phi_ref.mean().values/CON_G))
+            #print('{} delta_phi_ref'.format(delta_phi_ref.mean().values/CON_G))
+            #print('{} GCM delta_phi_ref'.format(climate_delta_phi_ref.mean().values/CON_G))
 
 
             # DEBUG
@@ -261,7 +235,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
 
             it += 1
 
-            if it >= 5:
+            if it >= max_n_iter:
                 print('DID NOT CONVERGE!')
                 break
 
@@ -269,6 +243,13 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         out_vars[p_ref]['P_hl_pgw'] = P_hl_pgw.copy()
         out_vars[p_ref]['PHI_hl_pgw'] = PHI_hl_pgw.copy() / CON_G
         out_vars[p_ref]['phi_ref_pgw'] = phi_ref_pgw.copy() / CON_G
+
+        # DEBUG
+        dPS = out_vars[p_ref]['PS_pgw']-laffile.PS
+        dPS.to_netcdf('delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref, laf_dt))
+        dPS.values -= xr.open_dataset('delta_ps.nc').ps.values
+        print('mean error PS: {}'.format(dPS.mean().values))
+        dPS.to_netcdf('error_delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref, laf_dt))
 
 
 
@@ -286,7 +267,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         PHI_hl_pgw_delta = debug_interp(out_vars[p_ref]['PHI_hl_pgw_delta'], 
                                   out_vars[p_ref]['P_hl_pgw_delta'])
         dPHI_hl = PHI_hl_pgw - PHI_hl_era
-        print(dPHI_hl)
+        #print(dPHI_hl)
         dPHI_hl_pgw_start = PHI_hl_pgw_start - PHI_hl_era
         dPHI_hl_pgw_delta = PHI_hl_pgw_delta - PHI_hl_era
 
@@ -298,8 +279,6 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         PS_era = debug_interp(laffile.PS)
         dPS = PS_pgw - PS_era
 
-        (out_vars[p_ref]['PS_pgw']-laffile.PS).to_netcdf(
-                    'delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref, laf_dt))
         #dPHI_hl.to_netcdf(
         #            'delta_phi_{}_{:%Y%m%d%H}.nc'.format(p_ref, laf_dt))
 
@@ -346,7 +325,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     dPHI_gcm = load_delta(delta_inp_path, var_name_map['PHI'],
                     laf_dt, laffile.time, delta_time_step).sel(plev=slice(100000,10000))
     dPHI_gcm = debug_interp(dPHI_gcm)
-    print(dPHI_gcm)
+    #print(dPHI_gcm)
     dPS_gcm = load_delta(delta_inp_path, var_name_map['PS'],
                         laf_dt, laffile.time, delta_time_step)
     dPS_gcm = debug_interp(dPS_gcm)
@@ -701,6 +680,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     # update T_SKIN 
     var_name = 'T_S'
     print('add {}'.format(var_name))
+    raise NotImplementedError()
     add_delta_era5(var_name_map[var_name], laffile, delta_inp_path,
                     delta_time_step, laf_dt, laf_var_name='T_SKIN')
 
@@ -748,6 +728,7 @@ if __name__ == "__main__":
     delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_delta_era5'
     delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test'
     delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test2'
+    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test3'
 
     pgw_sim_name_ending = 'pgw9'
 

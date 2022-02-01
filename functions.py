@@ -70,19 +70,18 @@ def load_delta(delta_inp_path, var_name, date_time, laf_time, diff_time_step):
     return(delta)
 
 
-def add_delta_era5(var, var_name, laffile, delta_inp_path,
+def get_delta_era5(var, var_name, laffile, delta_inp_path,
                     diff_time_step, date_time,
                     delta_fact=1):
     delta = load_delta(delta_inp_path, var_name, date_time, laffile.time,
                         diff_time_step)
     delta = delta.assign_coords({'lat':var.lat.values})
 
+    #var = var + delta * delta_fact
+    return(delta)
 
-    var = var + delta * delta_fact
-    return(var)
 
-
-def add_delta_interp_era5(var, target_P, var_name, laffile, delta_inp_path,
+def get_delta_interp_era5(var, target_P, var_name, laffile, delta_inp_path,
                         diff_time_step, date_time, 
                         half_levels=False, delta_fact=1):
     delta = load_delta(delta_inp_path, var_name, date_time, laffile.time,
@@ -91,8 +90,8 @@ def add_delta_interp_era5(var, target_P, var_name, laffile, delta_inp_path,
     # interpolate delta onto ERA5 vertical grid
     delta = vert_interp_era5(delta, var, target_P)
 
-    var = var + delta * delta_fact
-    return(var)
+    #var = var + delta * delta_fact
+    return(delta)
 
 
 
