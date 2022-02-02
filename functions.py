@@ -114,6 +114,15 @@ def vert_interp_era5(delta, var, target_P):
     bottom['plev'] = 106000
     delta = xr.concat([bottom, delta], dim='plev').transpose(
                                 'time', 'plev', 'lat', 'lon')
+    #print(delta)
+    if delta.name == 'hus':
+        print('WARNING: DEBUG MODE FOR variable hus model top!!!')
+        top = xr.zeros_like(delta.sel(plev=100000))
+        top['plev'] = 500
+        delta = xr.concat([delta, top], dim='plev').transpose(
+                                    'time', 'plev', 'lat', 'lon')
+        #print(delta.mean(dim=['lat','lon','time']))
+        #quit()
 
     # sort delta dataset from top to bottom (pressure ascending)
     delta = delta.reindex(plev=list(reversed(delta.plev)))
@@ -131,8 +140,8 @@ def vert_interp_era5(delta, var, target_P):
 
     #plt.plot(delta.isel(time=0).mean(dim=['lon','lat']),
     #        delta.plev.values)
-    #plt.plot(delta_out[var_name].isel(time=0).mean(dim=['lon','lat']),
-    #        laffile[pressure_type].isel(time=0).mean(dim=['lon','lat']))
+    #plt.plot(delta_out['var'].isel(time=0).mean(dim=['lon','lat']),
+    #        target_P.isel(time=0).mean(dim=['lon','lat']))
     #plt.show()
     #quit()
     return(delta_out['var'])
@@ -148,7 +157,7 @@ def interp_nonfixed(var, source_P, targ_P, inp_vdim_name, out_vdim_name):
     #tmp = interp_vprof(var.values.squeeze(), source_P.values.squeeze(),
     #                    targ_P.squeeze(), 
     tmp = interp_vprof(var.values.squeeze(), np.log(source_P.values.squeeze()),
-                        np.log(targ_P.squeeze()), 
+                        np.log(targ_P.squeeze()).values, 
                         targ.values.squeeze(),
                         len(var.lat), len(var.lon))
     tmp = np.expand_dims(tmp, axis=0)
@@ -158,7 +167,7 @@ def interp_nonfixed(var, source_P, targ_P, inp_vdim_name, out_vdim_name):
 def interp(var, P, targ_p, inp_vdim_name):
     targ = xr.zeros_like(var).isel({inp_vdim_name:range(len(targ_p))})
     tmp = interp_vprof(var.values.squeeze(), np.log(P.values.squeeze()),
-                        np.log(targ_p), 
+                        np.log(targ_p).values, 
                         targ.values.squeeze(),
                         len(var.lat), len(var.lon))
     tmp = np.expand_dims(tmp, axis=0)
@@ -200,8 +209,50 @@ def debug_interp(var, P=None):
     return(var)
 
 
+@njit()
+def interp_extrap_1d(src_x, src_y, targ_x):
+    targ_y = np.zeros(len(targ_x))
+    for ti in range(len(targ_x)):
+        i1 = -1
+        i2 = -1
+        for si in range(len(src_x)):
+            #print(src_x[si])
+            ty = np.nan
+            # extrapolate start
+            if (si == 0) and src_x[si] > targ_x[ti]:
+                i1 = si
+                i2 = si + 1
+                break
+            # exact match
+            elif src_x[si] == targ_x[ti]:
+                i1 = si
+                i2 = si
+                break
+            # we found upper src_x
+            elif src_x[si] > targ_x[ti]:
+                i1 = si - 1
+                i2 = si
+                break
+            # we are still smaller than targ_x[ti] 
+            else:
+                pass
 
-#@njit()
+        # extrapolate end
+        if i1 == -1:
+            i1 = len(src_x) - 2
+            i2 = len(src_x) - 1
+
+        if i1 == i2:
+            targ_y[ti] = src_y[i1]
+        else:
+            targ_y[ti] = (
+                src_y[i1] + (targ_x[ti] - src_x[i1]) * 
+                (src_y[i2] - src_y[i1]) / (src_x[i2] - src_x[i1])
+            )
+    return(targ_y)
+
+
+@njit()
 def interp_vprof(orig_array, src_p,
                 targ_p, interp_array,
                 nlat, nlon):
@@ -209,28 +260,39 @@ def interp_vprof(orig_array, src_p,
     Helper function for compute_VARNORMI. Speedup of ~100 time
     compared to pure python code!
     """
-    if len(targ_p.shape) == 1:
-        targ_p_col = targ_p
-        for lat_ind in range(nlat):
-            for lon_ind in range(nlon):
-                src_val_col = orig_array[:, lat_ind, lon_ind]
-                src_p_col = src_p[:, lat_ind, lon_ind]
-                ## np.interpo does not work for extrapolation 
-                #interp_col = np.interp(targ_p_col, src_p_col, src_val_col)
-                f = interp1d(src_p_col, src_val_col, fill_value='extrapolate')
-                interp_col = f(targ_p_col)
-                interp_array[:, lat_ind, lon_ind] = interp_col
-    else:
-        for lat_ind in range(nlat):
-            for lon_ind in range(nlon):
-                src_val_col = orig_array[:, lat_ind, lon_ind]
-                src_p_col = src_p[:, lat_ind, lon_ind]
-                targ_p_col = targ_p[:, lat_ind, lon_ind]
-                ## np.interpo does not work for extrapolation 
-                #interp_col = np.interp(targ_p_col, src_p_col, src_val_col)
-                f = interp1d(src_p_col, src_val_col, fill_value='extrapolate')
-                interp_col = f(targ_p_col)
-                interp_array[:, lat_ind, lon_ind] = interp_col
+    #print(targ_p.shape)
+    #if len(targ_p.shape) == 1:
+    #    targ_p_col = targ_p
+    #    for lat_ind in range(nlat):
+    #        for lon_ind in range(nlon):
+    #            src_val_col = orig_array[:, lat_ind, lon_ind]
+    #            src_p_col = src_p[:, lat_ind, lon_ind]
+    #            ## np.interp does not work for extrapolation 
+    #            #interp_col = np.interp(targ_p_col, src_p_col, src_val_col)
+    #            ## scipty with extrapolation but slow
+    #            #f = interp1d(src_p_col, src_val_col, fill_value='extrapolate')
+    #            #interp_col = f(targ_p_col)
+    #            interp_col = interp_extrap_0d(src_p_col, src_val_col, targ_p_col)
+    #            if (lat_ind == 0) and (lon_ind == 0):
+    #                print(src_p_col.shape)
+    #                print(src_val_col.shape)
+    #                print(targ_p_col.shape)
+    #                print(interp_col.shape)
+    #            interp_array[:, lat_ind, lon_ind] = interp_col
+    #else:
+    for lat_ind in range(nlat):
+        for lon_ind in range(nlon):
+            src_val_col = orig_array[:, lat_ind, lon_ind]
+            src_p_col = src_p[:, lat_ind, lon_ind]
+            targ_p_col = targ_p[:, lat_ind, lon_ind]
+            ## np.interp does not work for extrapolation 
+            #interp_col = np.interp(targ_p_col, src_p_col, src_val_col)
+            ## scipty with extrapolation but slow
+            #f = interp1d(src_p_col, src_val_col, fill_value='extrapolate')
+            #interp_col = f(targ_p_col)
+            ## faster implementation with numba
+            interp_col = interp_extrap_1d(src_p_col, src_val_col, targ_p_col)
+            interp_array[:, lat_ind, lon_ind] = interp_col
     return(interp_array)
 
 

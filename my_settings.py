@@ -34,6 +34,7 @@ n_out_time_steps = 366 * args.n_per_day
 
 var_name_map = {
         'hur'   :'RELHUM',
+        'hus'   :'QV',
         'hurs'  :'RELHUM_S',
         'ta'    :'T', 
         'tas'   :'T_S', 
@@ -134,6 +135,7 @@ if regridhorinew:
     ### Namelist
     ###########################################################################
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/MPI-ESM1-2-HR/plev'
+    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon'
     delta_name_base='plev_{}_delta.nc'
 
     #gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/test2/MPI-ESM1-2-HR'
@@ -143,10 +145,12 @@ if regridhorinew:
     #out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test/'
     out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test2/'
     out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test3/'
-    #out_grid_file = 'target_grid_era5'
+    out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon_test3/'
+    out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon/'
+    out_grid_file = 'target_grid_era5'
     #out_grid_file = 'target_grid_era5_test'
-    out_grid_file = 'target_grid_era5_test2'
-    out_grid_file = 'target_grid_era5_test3'
+    #out_grid_file = 'target_grid_era5_test2'
+    #out_grid_file = 'target_grid_era5_test3'
     #target_file_path = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_ctrl/int2lm_in'
     ###########################################################################
 
