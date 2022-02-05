@@ -10,7 +10,7 @@ import os
 import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
-from numba import njit
+from numba import njit, jit
 from datetime import datetime,timedelta
 from dateutil.relativedelta import relativedelta
 from package.utilities import dt64_to_dt
@@ -49,9 +49,11 @@ def fix_grid_coord_diffs(fix_ds, ref_ds):
         fix_ds['rlat'] = ref_ds.rlat
 
 
-def load_delta(delta_inp_path, var_name, date_time, laf_time, diff_time_step):
+def load_delta(delta_inp_path, var_name, date_time, 
+                laf_time, diff_time_step,
+                name_base='delta_{}.nc'):
     delta_year = xr.open_dataset(os.path.join(delta_inp_path,
-                            'delta_{}.nc'.format(var_name)))
+                            name_base.format(var_name)))
 
     # replace delta year values with year of current date_time
     for i in range(len(delta_year.time)):
@@ -154,21 +156,26 @@ def interp_nonfixed(var, source_P, targ_P, inp_vdim_name, out_vdim_name):
     #print(source_P.shape)
     #print(targ_P.shape)
     #quit()
-    #tmp = interp_vprof(var.values.squeeze(), source_P.values.squeeze(),
+    tmp = np.zeros_like(targ.values.squeeze())
+    #interp_vprof(var.values.squeeze(), source_P.values.squeeze(),
     #                    targ_P.squeeze(), 
-    tmp = interp_vprof(var.values.squeeze(), np.log(source_P.values.squeeze()),
+    interp_vprof(var.values.squeeze(), np.log(source_P.values.squeeze()),
                         np.log(targ_P.squeeze()).values, 
-                        targ.values.squeeze(),
+                        tmp,
                         len(var.lat), len(var.lon))
     tmp = np.expand_dims(tmp, axis=0)
+    #print(tmp.shape)
+    #print(targ.shape)
+    #quit()
     targ.values = tmp
     return(targ)
 
 def interp(var, P, targ_p, inp_vdim_name):
     targ = xr.zeros_like(var).isel({inp_vdim_name:range(len(targ_p))})
-    tmp = interp_vprof(var.values.squeeze(), np.log(P.values.squeeze()),
-                        np.log(targ_p).values, 
-                        targ.values.squeeze(),
+    tmp = np.zeros_like(targ.values.squeeze())
+    interp_vprof(var.values.squeeze(), np.log(P.values.squeeze()),
+                        np.log(np.expand_dims(targ_p, axis=(1,2))), 
+                        tmp,
                         len(var.lat), len(var.lon))
     tmp = np.expand_dims(tmp, axis=0)
     targ.values = tmp
@@ -201,7 +208,7 @@ def debug_interp(var, P=None):
             inp_vdim_name = 'level'
         else:
             raise NotImplementedError()
-        var = interp(var, P, plevs, inp_vdim_name)
+        var = interp(var, P, np.asarray(plevs), inp_vdim_name)
         var = var.mean(dim=['time','lon','lat'])
     else:
         var = var.mean(dim=['time','lon','lat'])
@@ -260,31 +267,12 @@ def interp_vprof(orig_array, src_p,
     Helper function for compute_VARNORMI. Speedup of ~100 time
     compared to pure python code!
     """
-    #print(targ_p.shape)
-    #if len(targ_p.shape) == 1:
-    #    targ_p_col = targ_p
-    #    for lat_ind in range(nlat):
-    #        for lon_ind in range(nlon):
-    #            src_val_col = orig_array[:, lat_ind, lon_ind]
-    #            src_p_col = src_p[:, lat_ind, lon_ind]
-    #            ## np.interp does not work for extrapolation 
-    #            #interp_col = np.interp(targ_p_col, src_p_col, src_val_col)
-    #            ## scipty with extrapolation but slow
-    #            #f = interp1d(src_p_col, src_val_col, fill_value='extrapolate')
-    #            #interp_col = f(targ_p_col)
-    #            interp_col = interp_extrap_0d(src_p_col, src_val_col, targ_p_col)
-    #            if (lat_ind == 0) and (lon_ind == 0):
-    #                print(src_p_col.shape)
-    #                print(src_val_col.shape)
-    #                print(targ_p_col.shape)
-    #                print(interp_col.shape)
-    #            interp_array[:, lat_ind, lon_ind] = interp_col
-    #else:
     for lat_ind in range(nlat):
         for lon_ind in range(nlon):
             src_val_col = orig_array[:, lat_ind, lon_ind]
             src_p_col = src_p[:, lat_ind, lon_ind]
             targ_p_col = targ_p[:, lat_ind, lon_ind]
+            #print(targ_p_col.shape)
             ## np.interp does not work for extrapolation 
             #interp_col = np.interp(targ_p_col, src_p_col, src_val_col)
             ## scipty with extrapolation but slow
@@ -293,10 +281,18 @@ def interp_vprof(orig_array, src_p,
             ## faster implementation with numba
             interp_col = interp_extrap_1d(src_p_col, src_val_col, targ_p_col)
             interp_array[:, lat_ind, lon_ind] = interp_col
-    return(interp_array)
+    #return(interp_array)
 
 
 
+def determine_p_ref(p_era, p_pgw, p_ref_last, p_ref_opts):
+    for p in p_ref_opts:
+        if (p_era > p) & (p_pgw > p):
+        #if x / p > 1.01:
+            if p_ref_last is None:
+                return(p)
+            else:
+                return(min(p, p_ref_last))
 
 def integ_geopot_era5(P_hl, FIS, T, QV, level1, p_ref):
     """
@@ -332,47 +328,44 @@ def integ_geopot_era5(P_hl, FIS, T, QV, level1, p_ref):
         #        PHI_hl.sel(level1=l+1) +
         #        (CON_RD * TV.sel(level=l) * alpha)
         #)
+
+    #if p_ref is None:
+    #    p_sfc = P_hl.sel(level1=np.max(P_hl.level1))
+    #    p_ref = xr.apply_ufunc(determine_p_ref, p_sfc, 
+    #            vectorize=True)
+
             
     #PHI = PHI.transpose('time', 'level', 'lat', 'lon')
     PHI_hl = PHI_hl.transpose('time', 'level1', 'lat', 'lon')
-
 
     ## integrate from last half-level below reference pressure
     ## up to reference pressure
     p_diff = P_hl - p_ref
     p_diff = p_diff.where(p_diff >= 0, np.nan)
-    #plt.plot(test.mean(dim=['lon','lat','time']),
-    #        laffile['P_hl'].mean(dim=['lon','lat','time']))
-    #plt.show()
     ind_ref_star = p_diff.argmin(dim='level1')
-    #ind_ref_star.to_netcdf('test.nc')
     hl_ref_star = p_diff.level1.isel(level1=ind_ref_star)
-    #print(hl_ref_star.mean().values)
     #hl_ref_star.to_netcdf('test.nc')
-    #print(hl_ref_star)
+    #quit()
     p_ref_star = P_hl.sel(level1=hl_ref_star)
-    #print('{} p ref '.format(p_ref_star.mean().values))
-    #p_ref_star.to_netcdf('test.nc')
-    #print(p_ref_star)
     phi_ref_star = PHI_hl.sel(level1=hl_ref_star)
-    #print('{} phi ref '.format(phi_ref_star.mean().values/CON_G))
-    #phi_ref_star.to_netcdf('test.nc')
-    #print(phi_ref_star)
 
     phi_ref = (
             phi_ref_star -
             (CON_RD * TV.sel(level=hl_ref_star-1)) * 
             (np.log(p_ref) - np.log(p_ref_star))
     )
-    del phi_ref['level1']
-    del phi_ref['level']
-
-
-    # debug
-    #phi_ref = phi_ref_star.copy()
+    if 'level1' in phi_ref.coords:
+        del phi_ref['level1']
+    if 'level' in phi_ref.coords:
+        del phi_ref['level']
+    if 'plev' in phi_ref.coords:
+        del phi_ref['level']
+    #print(phi_ref)
+    #quit()
     #del phi_ref['level1']
+    #del phi_ref['level']
 
-    return(PHI_hl, phi_ref, phi_ref_star)
+    return(PHI_hl, phi_ref)
 
 
 def integ_pressure_upward_era5(laffile, phi_ref, hl_ind=None):

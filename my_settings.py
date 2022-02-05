@@ -43,6 +43,7 @@ var_name_map = {
         'ua'    :'U', 
         'va'    :'V',
         'zg'    :'PHI',
+        'orog'  :'HSURF',
         }
 var_names = args.var_names.split(',')
 for var_name in var_names:
@@ -136,7 +137,14 @@ if regridhorinew:
     ###########################################################################
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/MPI-ESM1-2-HR/plev'
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon'
-    delta_name_base='plev_{}_delta.nc'
+    delta_inp_name_base='plev_{}_delta.nc'
+    delta_out_name_base='{}_delta.nc'
+
+    delta_inp_name_base='plev_{}_historical.nc'
+    delta_out_name_base='{}_historical.nc'
+
+    #delta_inp_name_base='plev_{}_ssp585.nc'
+    #delta_out_name_base='{}_ssp585.nc'
 
     #gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/test2/MPI-ESM1-2-HR'
     #delta_name_base='plev_{}_delta.nc'
@@ -146,11 +154,11 @@ if regridhorinew:
     out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test2/'
     out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test3/'
     out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon_test3/'
-    out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon/'
+    #out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon/'
     out_grid_file = 'target_grid_era5'
     #out_grid_file = 'target_grid_era5_test'
     #out_grid_file = 'target_grid_era5_test2'
-    #out_grid_file = 'target_grid_era5_test3'
+    out_grid_file = 'target_grid_era5_test3'
     #target_file_path = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_ctrl/int2lm_in'
     ###########################################################################
 
@@ -161,8 +169,8 @@ if regridhorinew:
     #subprocess.run(comandreghor, shell=True)
     for var_name in var_names:
         print('regrid horizontal {}'.format(var_name))
-        inp_file = os.path.join(gcm_data_path, delta_name_base.format(var_name))
-        out_file = os.path.join(out_dir, 'delta_{}.nc'.format(var_name))
+        inp_file = os.path.join(gcm_data_path, delta_inp_name_base.format(var_name))
+        out_file = os.path.join(out_dir, delta_out_name_base.format(var_name))
         #print(inp_file)
         #print(out_file)
         cdo_remap(out_grid_file, inp_file, out_file, method='bil')
