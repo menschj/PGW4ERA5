@@ -27,8 +27,18 @@ from constants import CON_G, CON_RD
 from package.utilities import Timer
 from package.mp import IterMP
 
+#delta_var_name_map = {
+#    'zg'    :'PHI'
+#    'ta'    :'T'
+#    'tas'   :'T_S'
+#    'hur'   :'RELHUM'
+#    'hus'   :'QV'
+#    'ua'    :'U'
+#    'va'    :'V'
+#    'ps'    :'PS' 
+#}
 
-var_name_map = {
+delta_var_name_map = {
     'PHI':      'zg',
     'T':        'ta',
     'T_S':      'tas',
@@ -39,16 +49,6 @@ var_name_map = {
     'PS':       'ps',
 }
 
-#var_name_map = {
-#    'PHI':      'PHI',
-#    'T':        'T',
-#    'T_S':      'T_S',
-#    'RELHUM':   'RELHUM',
-#    'QV':       'QV',
-#    'U':        'U',
-#    'V':        'V',
-#    'PS':       'PS',
-#}
 
 
 
@@ -96,7 +96,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     #adj_PS = xr.zeros_like(laffile.PS)
      
     delta_PS_gcm = get_delta_era5(laffile.PS,
-                    var_name_map['PS'], laffile, 
+                    delta_var_name_map['PS'], laffile, 
                     delta_inp_path, delta_time_step, laf_dt)
     adj_PS = delta_PS_gcm
 
@@ -107,25 +107,31 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     for var_name in ['T',RELHUM_or_QV_delta,'U','V']:
         delta_var = get_delta_interp_era5(
                 laffile[var_name],
-                P_era, var_name_map[var_name], laffile, 
+                P_era, delta_var_name_map[var_name], laffile, 
                 delta_inp_path, delta_time_step, laf_dt)
         deltas[var_name] = delta_var
 
-    ##### TODO DEBUG start
-    #var_name = 'T'
-    #dT = get_delta_interp_era5(
-    #        laffile[var_name],
-    #        P_era, var_name_map[var_name], laffile, 
-    #        delta_inp_path, delta_time_step, laf_dt)
-    #T_pgw = laffile.T + dT
+    var_name = 'T'
+    T_pgw = laffile[var_name] + deltas[var_name]
+    var_name = 'U'
+    U_pgw = laffile[var_name] + deltas[var_name]
+    var_name = 'V'
+    V_pgw = laffile[var_name] + deltas[var_name]
 
-    #var_name = 'QV'
-    #dQV = get_delta_interp_era5(
-    #        laffile[var_name],
-    #        P_era, var_name_map[var_name], laffile, 
-    #        delta_inp_path, delta_time_step, laf_dt)
-    #QV_pgw = laffile.QV + dQV
-    ##### TODO DEBUG stop
+    if RELHUM_or_QV_delta == 'RELHUM':
+        var_name = 'RELHUM'
+        RELHUM_pgw = laffile[var_name] + deltas[var_name]
+        # convert relative humidity to speicifc humidity in pgw
+        QV_pgw = relative_to_specific_humidity(
+                    RELHUM_pgw, P_era, T_pgw)
+
+    elif RELHUM_or_QV_delta == 'QV':
+        var_name = 'QV'
+        QV_pgw = laffile[var_name] + deltas[var_name]
+
+    else: 
+        raise NotImplementedError()
+
 
     it = 1
     while phi_ref_max_error > thresh_phi_ref_max_error:
@@ -141,66 +147,57 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         P_hl_pgw = (laffile.ak + PS_pgw * laffile.bk).transpose(
                     'time','level1','lat','lon')
 
-        # interpolate variables onto new model levels
-        #if np.sum(adj_PS.values != 0):
-        var_name = 'T'
-        #T_era = interp_nonfixed(laffile.T, 
-        #                P_era, P_pgw, 'level', 'level',
-        #                extrapolate=extrapolate)
-        T_era = laffile[var_name]
-        #dT = get_delta_interp_era5(
-        #        laffile[var_name],
-        #        P_pgw, var_name_map[var_name], laffile, 
-        #        delta_inp_path, delta_time_step, laf_dt)
-        dT = deltas[var_name]
-        T_pgw = T_era + dT
-        (T_era - laffile[var_name]).to_netcdf('interp_{}.nc'.format(var_name))
-        dT.to_netcdf('delta_{}.nc'.format(var_name))
-        #quit()
+        ## interpolate variables onto new model levels
+        ##if np.sum(adj_PS.values != 0):
+        #var_name = 'T'
+        ##T_era = interp_nonfixed(laffile.T, 
+        ##                P_era, P_pgw, 'level', 'level',
+        ##                extrapolate=extrapolate)
+        #T_era = laffile[var_name]
+        ##dT = get_delta_interp_era5(
+        ##        laffile[var_name],
+        ##        P_pgw, delta_var_name_map[var_name], laffile, 
+        ##        delta_inp_path, delta_time_step, laf_dt)
+        #dT = deltas[var_name]
+        #T_pgw = T_era + dT
 
-        if RELHUM_or_QV_delta == 'RELHUM':
-            var_name = 'RELHUM'
-            #RELHUM_era = interp_nonfixed(laffile.RELHUM, 
-            #                P_era, P_pgw, 'level', 'level',
-            #                extrapolate=extrapolate)
-            RELHUM_era = laffile[var_name]
-            #dRELHUM = get_delta_interp_era5(
-            #        laffile[var_name],
-            #        P_pgw, var_name_map[var_name], laffile, 
-            #        delta_inp_path, delta_time_step, laf_dt)
-            dRELHUM = deltas[var_name]
-            RELHUM_pgw = RELHUM_era + dRELHUM
+        #if RELHUM_or_QV_delta == 'RELHUM':
+        #    var_name = 'RELHUM'
+        #    #RELHUM_era = interp_nonfixed(laffile.RELHUM, 
+        #    #                P_era, P_pgw, 'level', 'level',
+        #    #                extrapolate=extrapolate)
+        #    RELHUM_era = laffile[var_name]
+        #    #dRELHUM = get_delta_interp_era5(
+        #    #        laffile[var_name],
+        #    #        P_pgw, delta_var_name_map[var_name], laffile, 
+        #    #        delta_inp_path, delta_time_step, laf_dt)
+        #    dRELHUM = deltas[var_name]
+        #    RELHUM_pgw = RELHUM_era + dRELHUM
 
-            # convert relative humidity to speicifc humidity in pgw
-            QV_pgw = relative_to_specific_humidity(
-                        RELHUM_pgw, P_pgw, T_pgw)
+        #    # convert relative humidity to speicifc humidity in pgw
+        #    QV_pgw = relative_to_specific_humidity(
+        #                RELHUM_pgw, P_pgw, T_pgw)
 
-        elif RELHUM_or_QV_delta == 'QV':
-            var_name = 'QV'
-            #QV_era = interp_nonfixed(laffile.QV, 
-            #                P_era, P_pgw, 'level', 'level',
-            #                extrapolate=extrapolate)
-            QV_era = laffile[var_name]
-            #dQV = get_delta_interp_era5(
-            #        laffile[var_name],
-            #        P_pgw, var_name_map[var_name], laffile, 
-            #        delta_inp_path, delta_time_step, laf_dt)
-            dQV = deltas[var_name]
-            QV_pgw = QV_era + dQV
-            (QV_era - laffile[var_name]).to_netcdf('interp_{}.nc'.format(var_name))
-            dQV.to_netcdf('delta_{}.nc'.format(var_name))
+        #elif RELHUM_or_QV_delta == 'QV':
+        #    var_name = 'QV'
+        #    #QV_era = interp_nonfixed(laffile.QV, 
+        #    #                P_era, P_pgw, 'level', 'level',
+        #    #                extrapolate=extrapolate)
+        #    QV_era = laffile[var_name]
+        #    #dQV = get_delta_interp_era5(
+        #    #        laffile[var_name],
+        #    #        P_pgw, delta_var_name_map[var_name], laffile, 
+        #    #        delta_inp_path, delta_time_step, laf_dt)
+        #    dQV = deltas[var_name]
+        #    QV_pgw = QV_era + dQV
 
-        else: 
-            raise NotImplementedError()
+        #else: 
+        #    raise NotImplementedError()
 
-        ## TODO DEBUG start
-        #T_pgw = laffile.T
-        #QV_pgw = laffile.QV
-        ## TODO DEBUG stop
 
         # get p_ref
         if p_ref_inp is None:
-            p_ref_opts = load_delta(delta_inp_path, var_name_map['PHI'],
+            p_ref_opts = load_delta(delta_inp_path, delta_var_name_map['PHI'],
                                 laf_dt, laffile.time, delta_time_step).plev
             p_sfc_era = P_hl_era.sel(level1=np.max(P_hl_era.level1))
             p_sfc_pgw = P_hl_pgw.sel(level1=np.max(P_hl_pgw.level1))
@@ -233,7 +230,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         #print('{} delta_phi_ref'.format(delta_phi_ref.mean().values/CON_G))
 
         ## load climate delta for reference pressure level
-        climate_delta_phi_ref = load_delta(delta_inp_path, var_name_map['PHI'],
+        climate_delta_phi_ref = load_delta(delta_inp_path, delta_var_name_map['PHI'],
                             laf_dt, laffile.time, delta_time_step) * CON_G
         climate_delta_phi_ref = climate_delta_phi_ref.assign_coords(
                                     lat=laffile.lat.values)
@@ -279,35 +276,32 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     laffile['PS'] = PS_pgw
     laffile['T'] = T_pgw
     laffile['QV'] = QV_pgw
+    laffile['U'] = U_pgw
+    laffile['V'] = V_pgw
     del laffile['RELHUM']
 
-    P_hl_era.to_netcdf('P_hl_era.nc')
-    P_hl_pgw.to_netcdf('P_hl_pgw.nc')
-
-    ## interpolate U and V onto final pgw grid and replace in ERA file
-    for var_name in ['U', 'V']:
-        print('add {}'.format(var_name))
-        #var_era = interp_nonfixed(laffile[var_name], 
-        #                P_era, P_pgw, 'level', 'level',
-        #                extrapolate=extrapolate)
-        var_era = laffile[var_name]
-        #dvar = get_delta_interp_era5(
-        #        laffile[var_name],
-        #        P_pgw, var_name_map[var_name], laffile, 
-        #        delta_inp_path, delta_time_step, laf_dt)
-        dvar = deltas[var_name]
-        #quit()
-        var_pgw = var_era + dvar
-        (var_era - laffile[var_name]).to_netcdf('interp_{}.nc'.format(var_name))
-        dvar.to_netcdf('delta_{}.nc'.format(var_name))
-        laffile[var_name] = var_pgw
+    ### interpolate U and V onto final pgw grid and replace in ERA file
+    #for var_name in ['U', 'V']:
+    #    print('add {}'.format(var_name))
+    #    #var_era = interp_nonfixed(laffile[var_name], 
+    #    #                P_era, P_pgw, 'level', 'level',
+    #    #                extrapolate=extrapolate)
+    #    var_era = laffile[var_name]
+    #    #dvar = get_delta_interp_era5(
+    #    #        laffile[var_name],
+    #    #        P_pgw, delta_var_name_map[var_name], laffile, 
+    #    #        delta_inp_path, delta_time_step, laf_dt)
+    #    dvar = deltas[var_name]
+    #    #quit()
+    #    var_pgw = var_era + dvar
+    #    laffile[var_name] = var_pgw
 
 
     # also update T_SKIN 
     var_name = 'T_S'
     print('add {}'.format(var_name))
     delta_T_SKIN = get_delta_era5(laffile.T_SKIN,
-                    var_name_map['T_S'], laffile, 
+                    delta_var_name_map['T_S'], laffile, 
                     delta_inp_path, delta_time_step, laf_dt)
     laffile.T_SKIN.values += delta_T_SKIN.values
 
@@ -352,12 +346,11 @@ if __name__ == "__main__":
     sim_name_base = args.sim_name_base
     wd_path = '/scratch/snx3000/heimc/lmp/wd'
     changeyears = 0
-    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_era5'
+    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_era5_Amon'
     delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_era5_Emon'
 
-    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_delta_era5'
-    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test3'
-    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon'
+    #delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Amon'
+    #delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon'
     #delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon_test3'
 
     RELHUM_or_QV_delta = 'RELHUM'

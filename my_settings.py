@@ -24,9 +24,9 @@ args = parser.parse_args()
 print(args)
 
 performsmooth   = 0
-performinterp   = 0
-regridhori      = 0
-regridhorinew   = 1
+performinterp   = 1
+regridhori      = 1
+regridhorinew   = 0
 regridvert      = 0 # not used anymore for era5
 
 # number of output time steps in total
@@ -88,13 +88,15 @@ if performinterp:
     ###########################################################################
     #see documentation in interpolate.py
     # run e.g. cdo sellonlatbox,-65,35,-45,30
-    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/MPI-ESM1-2-HR/plev'
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon/MPI-ESM1-2-HR'
+    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Amon/MPI-ESM1-2-HR'
+
     gcm_delta_base='plev_{}_delta.nc'
+    #gcm_delta_base='plev_{}_historical.nc'
     gcm_data_freq = 'month'
 
-    out_path = '/scratch/snx3000/heimc/pgw/interpolated_plev/'
     out_path = '/scratch/snx3000/heimc/pgw/interpolated_Emon/'
+    out_path = '/scratch/snx3000/heimc/pgw/interpolated_Amon/'
     ###########################################################################
 
     for var_name in var_names:  
@@ -102,7 +104,7 @@ if performinterp:
         gcm_file_path = os.path.join(gcm_data_path, 
                                 gcm_delta_base.format(var_name))
         interpannualcycle(gcm_file_path, var_name, 
-                        var_name_map[var_name],
+                        var_name,
                         n_out_time_steps,
                         gcm_data_freq, out_path, args.n_par)
 
@@ -111,8 +113,8 @@ if regridhori:
     ###########################################################################
     ### Namelist
     ###########################################################################
-    infolder = '/scratch/snx3000/heimc/pgw/interpolated_plev/'
     infolder = '/scratch/snx3000/heimc/pgw/interpolated_Emon/'
+    infolder = '/scratch/snx3000/heimc/pgw/interpolated_Amon/'
 
     #outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_12/'
     #out_grid_file = 'target_grid_SA_12'
@@ -120,8 +122,8 @@ if regridhori:
     #outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_3/'
     #out_grid_file = 'target_grid_SA_3'
 
-    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_era5/'
     outputfolder = '/scratch/snx3000/heimc/pgw/regridded_era5_Emon/'
+    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_era5_Amon/'
     out_grid_file = 'target_grid_era5'
     ###########################################################################
 
@@ -130,7 +132,7 @@ if regridhori:
     #subprocess.run(comandreghor, shell=True)
     for var_name in var_names:
         print('regrid horizontal {}'.format(var_name))
-        regridhorizontal(infolder, var_name_map[var_name], n_out_time_steps,
+        regridhorizontal(infolder, var_name, n_out_time_steps,
                         out_grid_file, outputfolder, njobs=args.n_par)
 
 

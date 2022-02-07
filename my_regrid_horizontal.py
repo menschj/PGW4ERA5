@@ -54,8 +54,10 @@ def regridhorizontal(infolder, variablename, n_out_time_steps,
     for stepnum in range(1696,1696+21*8):
     #for stepnum in range(1696,1696+1):
         #print(stepnum)
-        infile = f"{infolder}/{variablename}{stepnum:05d}.nc"
-        outfile = f"{outputfolder}/{variablename}{stepnum:05d}.nc"
+        #infile = f"{infolder}/{variablename}_historical_{stepnum:05d}.nc"
+        #outfile = f"{outputfolder}/{variablename}_historical_{stepnum:05d}.nc"
+        infile = f"{infolder}/{variablename}_delta_{stepnum:05d}.nc"
+        outfile = f"{outputfolder}/{variablename}_delta_{stepnum:05d}.nc"
         step_args.append({'inp_file':infile,
                           'out_file':outfile})
     IMP.run(run_remap_with_cdo_fix, fargs, step_args)

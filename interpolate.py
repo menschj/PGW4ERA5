@@ -10,7 +10,8 @@ from package.mp import IterMP
 ###############################################################################
 
 def save_time_step(var_out, out_path, var_name, out_time_step):
-    file_path = f"{out_path}/{var_name}{out_time_step:05d}.nc"
+    #file_path = f"{out_path}/{var_name}_historical_{out_time_step:05d}.nc"
+    file_path = f"{out_path}/{var_name}_delta_{out_time_step:05d}.nc"
     #print(file_path)
     #print(var_out.sel(time=[out_time_step]))
     #quit()
@@ -73,6 +74,7 @@ def interpannualcycle(gcm_file_path, inp_var_name, out_var_name,
     if gcm_data_freq == 'month':
         all_tnew = np.linspace(0, timesteps, num=n_out_time_steps)
 
+
         jan = 0.5*(var_in[0] + var_in[-1])
         first = var_in[:-1, ...]
         second = var_in[1:, ...]
@@ -93,15 +95,9 @@ def interpannualcycle(gcm_file_path, inp_var_name, out_var_name,
     #quit()
     all_out_time_steps = np.arange(n_out_time_steps)
 
-    #start_ind = 0
-    #end_ind = 1000
-    #tnew = all_tnew[start_ind:end_ind]
-    #out_time_steps = all_out_time_steps[start_ind:end_ind]
-    tnew = all_tnew
-    out_time_steps = all_out_time_steps
-    #print(tnew)
-    #print(out_time_steps)
-    #quit()
+    # TODO tmp
+    tnew = all_tnew[range(1696,1696+21*8)]
+    out_time_steps = all_out_time_steps[range(1696,1696+21*8)]
 
     var_out = var_in.interp(time=tnew, method='linear', assume_sorted=True)
     #print(var_out)

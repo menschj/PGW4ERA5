@@ -53,24 +53,25 @@ def load_delta(delta_inp_path, var_name, date_time,
                 laf_time, diff_time_step,
                 name_base='{}_delta.nc'):
 
-    delta_year = xr.open_dataset(os.path.join(delta_inp_path,
-                            name_base.format(var_name)))
-    # replace delta year values with year of current date_time
-    for i in range(len(delta_year.time)):
-        delta_year.time.values[i] = dt64_to_dt(
-                    delta_year.time[i]).replace(year=date_time.year)
-    # interpolate in time and select variable
-    delta = delta_year[var_name].interp(time=date_time, 
-                                method='linear', 
-                            ).expand_dims(dim='time', axis=0)
-    # make sure time is in the same format as in laf file
-    delta['time'] = laf_time
-
-
-    #delta = xr.open_dataset(
-    #        f'{delta_inp_path}/{var_name}{diff_time_step:05d}.nc')[var_name]
+    #delta_year = xr.open_dataset(os.path.join(delta_inp_path,
+    #                        name_base.format(var_name)))
+    ## replace delta year values with year of current date_time
+    #for i in range(len(delta_year.time)):
+    #    delta_year.time.values[i] = dt64_to_dt(
+    #                delta_year.time[i]).replace(year=date_time.year)
+    ## interpolate in time and select variable
+    #delta = delta_year[var_name].interp(time=date_time, 
+    #                            method='linear', 
+    #                        ).expand_dims(dim='time', axis=0)
     ## make sure time is in the same format as in laf file
     #delta['time'] = laf_time
+
+
+    name_base = name_base.split('.nc')[0] + '_{:05d}.nc'
+    delta = xr.open_dataset(os.path.join(delta_inp_path,
+            name_base.format(var_name, diff_time_step)))[var_name]
+    # make sure time is in the same format as in laf file
+    delta['time'] = laf_time
     
     return(delta)
 
@@ -87,32 +88,55 @@ def get_delta_interp_era5(var, target_P, var_name, laffile, delta_inp_path,
                         diff_time_step, date_time):
     delta = load_delta(delta_inp_path, var_name, date_time, laffile.time,
                         diff_time_step)
+    delta = delta.assign_coords({'lat':var.lat.values})
 
-    #if var_name == 'T':
-    #    raise NotImplementedError()
-
-    #if var_name == 'ta':
-    #    sfc_var_name = 'tas'
-    #    delta_sfc = load_delta(delta_inp_path, sfc_var_name, 
-    #                        date_time, laffile.time,
-    #                        diff_time_step)
-    #    print(delta_sfc)
-    #    ps_hist = load_delta(delta_inp_path, 'ps', 
-    #                        date_time, laffile.time,
-    #                        diff_time_step,
-    #                        name_base='{}_historical.nc')
-    #else:
-    #    delta_sfc = None
-    #    ps_hist = None
+    if var_name == 'ta':
+        sfc_var_name = 'tas'
+        delta_sfc = load_delta(delta_inp_path, sfc_var_name, 
+                            date_time, laffile.time,
+                            diff_time_step)
+        delta_sfc = delta_sfc.assign_coords({'lat':var.lat.values})
+        ps_hist = load_delta(delta_inp_path, 'ps', 
+                            date_time, laffile.time,
+                            diff_time_step,
+                            name_base='{}_historical.nc')
+        ps_hist = ps_hist.assign_coords({'lat':var.lat.values})
+    else:
+        delta_sfc = None
+        ps_hist = None
 
     # interpolate delta onto ERA5 vertical grid
-    delta = vert_interp_delta(delta, target_P)
-    delta = delta.assign_coords({'lat':var.lat.values})
+    delta = vert_interp_delta(delta, target_P, delta_sfc, ps_hist)
     return(delta)
 
 
+def replace_delta_sfc(source_P, ps_hist, delta, delta_sfc):
+    #ps_hist = 101300
+    #print(source_P)
+    #print(ps_hist)
+    #print(delta)
+    #print(delta_sfc)
+    out_source_P = source_P.copy()
+    out_delta = delta.copy()
+    if ps_hist > np.max(source_P):
+        sfc_ind = len(source_P) - 1
+        out_source_P[sfc_ind] = ps_hist
+        out_delta[sfc_ind] = delta_sfc
+    elif ps_hist < np.min(source_P):
+        raise ValueError()
+    else:
+        sfc_ind = np.max(np.argwhere(ps_hist > source_P))
+        #print(sfc_ind)
+        out_delta[sfc_ind:] = delta_sfc
+        out_source_P[sfc_ind] = ps_hist
 
-def vert_interp_delta(delta, target_P):
+    #print(out_source_P)
+    #print(out_delta)
+    #quit()
+    return(out_source_P, out_delta)
+
+
+def vert_interp_delta(delta, target_P, delta_sfc, ps_hist):
 
     #print(delta)
     if delta.name in ['hus', 'QV']:
@@ -122,16 +146,53 @@ def vert_interp_delta(delta, target_P):
         delta = xr.concat([delta, top], dim='plev').transpose(
                                     'time', 'plev', 'lat', 'lon')
         #print(delta.mean(dim=['lat','lon','time']))
+        #print(delta.plev)
         #quit()
 
     # sort delta dataset from top to bottom (pressure ascending)
     delta = delta.reindex(plev=list(reversed(delta.plev)))
 
+    # create 4D source pressure with GCM pressure levels
     source_P = delta.plev.expand_dims(
                     dim={'lon':delta.lon,
                          'lat':delta.lat,
                          'time':delta.time}).transpose(
                                     'time', 'plev', 'lat', 'lon')
+
+    #lon_ind = 22
+    #lat_ind = 50
+    #print(source_P.isel(lon=lon_ind, lat=lat_ind).values)
+    #print(target_P.sel(level=np.max(target_P.level)).isel(lon=lon_ind, lat=lat_ind).values)
+    #print(delta.isel(lon=lon_ind, lat=lat_ind).values)
+    ##print(ps_hist.isel(lon=lon_ind, lat=lat_ind).values)
+    #print(delta_sfc.isel(lon=lon_ind, lat=lat_ind).values)
+
+
+    ## if surface values are given, replace them at the
+    ## level of the surface pressure
+    if delta_sfc is not None:
+        source_P, delta = xr.apply_ufunc(
+                replace_delta_sfc, source_P, 
+                ps_hist, 
+                #target_P.sel(level=np.max(target_P.level)), 
+                delta, delta_sfc,
+                input_core_dims=[['plev'],[],['plev'],[]],
+                output_core_dims=[['plev'],['plev']],
+                vectorize=True)
+        source_P = source_P.transpose('time', 'plev', 'lat', 'lon')
+        delta = delta.transpose('time', 'plev', 'lat', 'lon')
+
+
+    #print(source_P.isel(lon=lon_ind, lat=lat_ind).values)
+    #print(delta.isel(lon=lon_ind, lat=lat_ind).values)
+    #quit()
+
+    if source_P.dims != ('time', 'plev', 'lat', 'lon'):
+        raise ValueError()
+    if delta.dims != ('time', 'plev', 'lat', 'lon'):
+        raise ValueError()
+    if target_P.dims != ('time', 'level', 'lat', 'lon'):
+        raise ValueError()
 
     delta_interp = interp_nonfixed(delta, source_P, target_P,
                         'plev', 'level',
@@ -139,56 +200,6 @@ def vert_interp_delta(delta, target_P):
     return(delta_interp)
 
 
-#def vert_interp_delta(delta, var, target_P):
-#
-#    #grid dimensions for interpolation function
-#    xx = np.arange(len(delta.lon))
-#    yy = np.arange(len(delta.lat))
-#
-#    # get index for efficient computation (avoid loops)
-#    yid, xid = np.ix_(yy,xx)
-#
-#    # create output dataset
-#    delta_out = xr.zeros_like(var).to_dataset()
-#    var_out = xr.zeros_like(var)
-#    delta_out['var'] = var_out
-#
-#    # duplicate bottom layer value to 1050 hPa to avoid extrapolation
-#    bottom = delta.sel(plev=100000).copy()
-#    bottom['plev'] = 106000
-#    delta = xr.concat([bottom, delta], dim='plev').transpose(
-#                                'time', 'plev', 'lat', 'lon')
-#    #print(delta)
-#    if delta.name in ['hus', 'QV']:
-#        print('WARNING: DEBUG MODE FOR variable hus model top!!!')
-#        top = xr.zeros_like(delta.sel(plev=100000))
-#        top['plev'] = 500
-#        delta = xr.concat([delta, top], dim='plev').transpose(
-#                                    'time', 'plev', 'lat', 'lon')
-#        #print(delta.mean(dim=['lat','lon','time']))
-#        #quit()
-#
-#    # sort delta dataset from top to bottom (pressure ascending)
-#    delta = delta.reindex(plev=list(reversed(delta.plev)))
-#
-#    # get the 3D interpolation fucntion
-#    fn = RegularGridInterpolator((np.log(delta.plev.values), yy, xx),
-#    #fn = RegularGridInterpolator((delta.plev.values, yy, xx),
-#                                delta.isel(time=0).values)#,
-#                                #bounds_error=False)
-#
-#    #interpolate the data to the actual era5 pressure
-#    delta_out['var'].values = np.expand_dims(fn(
-#            (np.log(target_P).isel(time=0).values, yid, xid)),axis=0)
-#            #(target_P.isel(time=0).values, yid, xid)),axis=0)
-#
-#    #plt.plot(delta.isel(time=0).mean(dim=['lon','lat']),
-#    #        delta.plev.values)
-#    #plt.plot(delta_out['var'].isel(time=0).mean(dim=['lon','lat']),
-#    #        target_P.isel(time=0).mean(dim=['lon','lat']))
-#    #plt.show()
-#    #quit()
-#    return(delta_out['var'])
 
 
 def interp_nonfixed(var, source_P, targ_P,
@@ -204,22 +215,15 @@ def interp_nonfixed(var, source_P, targ_P,
         raise ValueError()
 
     targ = xr.zeros_like(targ_P)
-    #print(var.shape)
-    #print(source_P.shape)
-    #print(targ_P.shape)
-    #quit()
     tmp = np.zeros_like(targ.values.squeeze())
     #interp_vprof(var.values.squeeze(), source_P.values.squeeze(),
-    #                    targ_P.squeeze(), 
+    #                    targ_P.squeeze().values, 
     interp_vprof(var.values.squeeze(), np.log(source_P.values.squeeze()),
                         np.log(targ_P.squeeze()).values, 
                         tmp,
                         len(var.lat), len(var.lon),
                         extrapolate)
     tmp = np.expand_dims(tmp, axis=0)
-    #print(tmp.shape)
-    #print(targ.shape)
-    #quit()
     targ.values = tmp
     return(targ)
 
@@ -235,7 +239,7 @@ def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
         for si in range(len(src_x)):
             #print(src_x[si])
             ty = np.nan
-            # extrapolate start
+            # extrapolate lower end
             if (si == 0) and src_x[si] > targ_x[ti]:
                 if extrapolate == 'linear':
                     i1 = si
@@ -250,7 +254,7 @@ def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
                 i1 = si
                 i2 = si
                 break
-            # we found upper src_x
+            # upper src_x found (interpolation)
             elif src_x[si] > targ_x[ti]:
                 i1 = si - 1
                 i2 = si
@@ -259,7 +263,7 @@ def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
             else:
                 pass
 
-        # extrapolate end
+        # extrapolate upper end
         if i1 == -1:
             if extrapolate == 'linear':
                 i1 = len(src_x) - 2
@@ -269,6 +273,9 @@ def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
                 i2 = len(src_x) - 1
             require_extrap = True
 
+        if require_extrap and extrapolate == 'off':
+            raise ValueError('Extrapolation turned off but data out of bounds.')
+
         if i1 == i2:
             targ_y[ti] = src_y[i1]
         else:
@@ -277,8 +284,6 @@ def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
                 (src_y[i2] - src_y[i1]) / (src_x[i2] - src_x[i1])
             )
 
-        if require_extrap and extrapolate == 'off':
-            targ_y[ti] = np.nan
     return(targ_y)
 
 
@@ -293,6 +298,7 @@ def interp_vprof(orig_array, src_p,
     """
     for lat_ind in range(nlat):
         for lon_ind in range(nlon):
+            #print('lat {} lon {}'.format(lat_ind, lon_ind))
             src_val_col = orig_array[:, lat_ind, lon_ind]
             src_p_col = src_p[:, lat_ind, lon_ind]
             targ_p_col = targ_p[:, lat_ind, lon_ind]
@@ -303,12 +309,19 @@ def interp_vprof(orig_array, src_p,
             #f = interp1d(src_p_col, src_val_col, fill_value='extrapolate')
             #interp_col = f(targ_p_col)
             ## faster implementation with numba
+
+            #print(src_p_col)
+            #print(src_val_col)
+            #print(targ_p_col)
             interp_col = interp_extrap_1d(src_p_col, src_val_col, 
                                         targ_p_col, extrapolate)
+            #print(interp_col)
+            #quit()
             if np.any(np.isnan(interp_col)):
-                raise ValueError('Interpolated data contains NaN either due to '+
-                                'extrapolation turned off but data out of bounds, ' +
-                                'or because NaN are inherent to data!')
+                #raise ValueError('Interpolated data contains NaN either due to '+
+                #                'extrapolation turned off but data out of bounds, ' +
+                #                'or because NaN are inherent to data!')
+                raise ValueError('Interpolated data contains NaN!')
             interp_array[:, lat_ind, lon_ind] = interp_col
     #return(interp_array)
 
@@ -402,11 +415,6 @@ def integ_geopot_era5(P_hl, FIS, T, QV, level1, p_ref):
         #        PHI_hl.sel(level1=l+1) +
         #        (CON_RD * TV.sel(level=l) * alpha)
         #)
-
-    #if p_ref is None:
-    #    p_sfc = P_hl.sel(level1=np.max(P_hl.level1))
-    #    p_ref = xr.apply_ufunc(determine_p_ref, p_sfc, 
-    #            vectorize=True)
 
             
     #PHI = PHI.transpose('time', 'level', 'lat', 'lon')
