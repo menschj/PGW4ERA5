@@ -51,15 +51,14 @@ def fix_grid_coord_diffs(fix_ds, ref_ds):
 
 def load_delta(delta_inp_path, var_name, date_time, 
                 laf_time, diff_time_step,
-                name_base='delta_{}.nc'):
+                name_base='{}_delta.nc'):
+
     delta_year = xr.open_dataset(os.path.join(delta_inp_path,
                             name_base.format(var_name)))
-
     # replace delta year values with year of current date_time
     for i in range(len(delta_year.time)):
         delta_year.time.values[i] = dt64_to_dt(
                     delta_year.time[i]).replace(year=date_time.year)
-
     # interpolate in time and select variable
     delta = delta_year[var_name].interp(time=date_time, 
                                 method='linear', 
@@ -67,57 +66,56 @@ def load_delta(delta_inp_path, var_name, date_time,
     # make sure time is in the same format as in laf file
     delta['time'] = laf_time
 
+
     #delta = xr.open_dataset(
     #        f'{delta_inp_path}/{var_name}{diff_time_step:05d}.nc')[var_name]
+    ## make sure time is in the same format as in laf file
+    #delta['time'] = laf_time
+    
     return(delta)
 
 
 def get_delta_era5(var, var_name, laffile, delta_inp_path,
-                    diff_time_step, date_time,
-                    delta_fact=1):
+                    diff_time_step, date_time):
     delta = load_delta(delta_inp_path, var_name, date_time, laffile.time,
                         diff_time_step)
     delta = delta.assign_coords({'lat':var.lat.values})
-
-    #var = var + delta * delta_fact
     return(delta)
 
 
 def get_delta_interp_era5(var, target_P, var_name, laffile, delta_inp_path,
-                        diff_time_step, date_time, 
-                        half_levels=False, delta_fact=1):
+                        diff_time_step, date_time):
     delta = load_delta(delta_inp_path, var_name, date_time, laffile.time,
                         diff_time_step)
 
-    # interpolate delta onto ERA5 vertical grid
-    delta = vert_interp_era5(delta, var, target_P)
+    #if var_name == 'T':
+    #    raise NotImplementedError()
 
-    #var = var + delta * delta_fact
+    #if var_name == 'ta':
+    #    sfc_var_name = 'tas'
+    #    delta_sfc = load_delta(delta_inp_path, sfc_var_name, 
+    #                        date_time, laffile.time,
+    #                        diff_time_step)
+    #    print(delta_sfc)
+    #    ps_hist = load_delta(delta_inp_path, 'ps', 
+    #                        date_time, laffile.time,
+    #                        diff_time_step,
+    #                        name_base='{}_historical.nc')
+    #else:
+    #    delta_sfc = None
+    #    ps_hist = None
+
+    # interpolate delta onto ERA5 vertical grid
+    delta = vert_interp_delta(delta, target_P)
+    delta = delta.assign_coords({'lat':var.lat.values})
     return(delta)
 
 
 
-def vert_interp_era5(delta, var, target_P):
+def vert_interp_delta(delta, target_P):
 
-    #grid dimensions for interpolation function
-    xx = np.arange(len(delta.lon))
-    yy = np.arange(len(delta.lat))
-
-    # get index for efficient computation (avoid loops)
-    yid, xid = np.ix_(yy,xx)
-
-    # create output dataset
-    delta_out = xr.zeros_like(var).to_dataset()
-    var_out = xr.zeros_like(var)
-    delta_out['var'] = var_out
-
-    # duplicate bottom layer value to 1050 hPa to avoid extrapolation
-    bottom = delta.sel(plev=100000).copy()
-    bottom['plev'] = 106000
-    delta = xr.concat([bottom, delta], dim='plev').transpose(
-                                'time', 'plev', 'lat', 'lon')
     #print(delta)
-    if delta.name == 'hus':
+    if delta.name in ['hus', 'QV']:
         print('WARNING: DEBUG MODE FOR variable hus model top!!!')
         top = xr.zeros_like(delta.sel(plev=100000))
         top['plev'] = 500
@@ -129,28 +127,82 @@ def vert_interp_era5(delta, var, target_P):
     # sort delta dataset from top to bottom (pressure ascending)
     delta = delta.reindex(plev=list(reversed(delta.plev)))
 
-    # get the 3D interpolation fucntion
-    fn = RegularGridInterpolator((np.log(delta.plev.values), yy, xx),
-    #fn = RegularGridInterpolator((delta.plev.values, yy, xx),
-                                delta.isel(time=0).values)#,
-                                #bounds_error=False)
+    source_P = delta.plev.expand_dims(
+                    dim={'lon':delta.lon,
+                         'lat':delta.lat,
+                         'time':delta.time}).transpose(
+                                    'time', 'plev', 'lat', 'lon')
 
-    #interpolate the data to the actual era5 pressure
-    delta_out['var'].values = np.expand_dims(fn(
-            (np.log(target_P).isel(time=0).values, yid, xid)),axis=0)
-            #(target_P.isel(time=0).values, yid, xid)),axis=0)
-
-    #plt.plot(delta.isel(time=0).mean(dim=['lon','lat']),
-    #        delta.plev.values)
-    #plt.plot(delta_out['var'].isel(time=0).mean(dim=['lon','lat']),
-    #        target_P.isel(time=0).mean(dim=['lon','lat']))
-    #plt.show()
-    #quit()
-    return(delta_out['var'])
+    delta_interp = interp_nonfixed(delta, source_P, target_P,
+                        'plev', 'level',
+                        extrapolate='constant')
+    return(delta_interp)
 
 
+#def vert_interp_delta(delta, var, target_P):
+#
+#    #grid dimensions for interpolation function
+#    xx = np.arange(len(delta.lon))
+#    yy = np.arange(len(delta.lat))
+#
+#    # get index for efficient computation (avoid loops)
+#    yid, xid = np.ix_(yy,xx)
+#
+#    # create output dataset
+#    delta_out = xr.zeros_like(var).to_dataset()
+#    var_out = xr.zeros_like(var)
+#    delta_out['var'] = var_out
+#
+#    # duplicate bottom layer value to 1050 hPa to avoid extrapolation
+#    bottom = delta.sel(plev=100000).copy()
+#    bottom['plev'] = 106000
+#    delta = xr.concat([bottom, delta], dim='plev').transpose(
+#                                'time', 'plev', 'lat', 'lon')
+#    #print(delta)
+#    if delta.name in ['hus', 'QV']:
+#        print('WARNING: DEBUG MODE FOR variable hus model top!!!')
+#        top = xr.zeros_like(delta.sel(plev=100000))
+#        top['plev'] = 500
+#        delta = xr.concat([delta, top], dim='plev').transpose(
+#                                    'time', 'plev', 'lat', 'lon')
+#        #print(delta.mean(dim=['lat','lon','time']))
+#        #quit()
+#
+#    # sort delta dataset from top to bottom (pressure ascending)
+#    delta = delta.reindex(plev=list(reversed(delta.plev)))
+#
+#    # get the 3D interpolation fucntion
+#    fn = RegularGridInterpolator((np.log(delta.plev.values), yy, xx),
+#    #fn = RegularGridInterpolator((delta.plev.values, yy, xx),
+#                                delta.isel(time=0).values)#,
+#                                #bounds_error=False)
+#
+#    #interpolate the data to the actual era5 pressure
+#    delta_out['var'].values = np.expand_dims(fn(
+#            (np.log(target_P).isel(time=0).values, yid, xid)),axis=0)
+#            #(target_P.isel(time=0).values, yid, xid)),axis=0)
+#
+#    #plt.plot(delta.isel(time=0).mean(dim=['lon','lat']),
+#    #        delta.plev.values)
+#    #plt.plot(delta_out['var'].isel(time=0).mean(dim=['lon','lat']),
+#    #        target_P.isel(time=0).mean(dim=['lon','lat']))
+#    #plt.show()
+#    #quit()
+#    return(delta_out['var'])
 
-def interp_nonfixed(var, source_P, targ_P, inp_vdim_name, out_vdim_name):
+
+def interp_nonfixed(var, source_P, targ_P,
+                    inp_vdim_name, out_vdim_name,
+                    extrapolate='off'):
+    """
+    extrapolate:
+        - off: no extrapolation
+        - linear: linear extrapolation
+        - constant: constant extrapolation
+    """
+    if extrapolate not in ['off', 'linear', 'constant']:
+        raise ValueError()
+
     targ = xr.zeros_like(targ_P)
     #print(var.shape)
     #print(source_P.shape)
@@ -162,13 +214,104 @@ def interp_nonfixed(var, source_P, targ_P, inp_vdim_name, out_vdim_name):
     interp_vprof(var.values.squeeze(), np.log(source_P.values.squeeze()),
                         np.log(targ_P.squeeze()).values, 
                         tmp,
-                        len(var.lat), len(var.lon))
+                        len(var.lat), len(var.lon),
+                        extrapolate)
     tmp = np.expand_dims(tmp, axis=0)
     #print(tmp.shape)
     #print(targ.shape)
     #quit()
     targ.values = tmp
     return(targ)
+
+
+
+@njit()
+def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
+    targ_y = np.zeros(len(targ_x))
+    for ti in range(len(targ_x)):
+        i1 = -1
+        i2 = -1
+        require_extrap = False
+        for si in range(len(src_x)):
+            #print(src_x[si])
+            ty = np.nan
+            # extrapolate start
+            if (si == 0) and src_x[si] > targ_x[ti]:
+                if extrapolate == 'linear':
+                    i1 = si
+                    i2 = si + 1
+                elif extrapolate == 'constant':
+                    i1 = si
+                    i2 = si
+                require_extrap = True
+                break
+            # exact match
+            elif src_x[si] == targ_x[ti]:
+                i1 = si
+                i2 = si
+                break
+            # we found upper src_x
+            elif src_x[si] > targ_x[ti]:
+                i1 = si - 1
+                i2 = si
+                break
+            # we are still smaller than targ_x[ti] 
+            else:
+                pass
+
+        # extrapolate end
+        if i1 == -1:
+            if extrapolate == 'linear':
+                i1 = len(src_x) - 2
+                i2 = len(src_x) - 1
+            elif extrapolate == 'constant':
+                i1 = len(src_x) - 1 
+                i2 = len(src_x) - 1
+            require_extrap = True
+
+        if i1 == i2:
+            targ_y[ti] = src_y[i1]
+        else:
+            targ_y[ti] = (
+                src_y[i1] + (targ_x[ti] - src_x[i1]) * 
+                (src_y[i2] - src_y[i1]) / (src_x[i2] - src_x[i1])
+            )
+
+        if require_extrap and extrapolate == 'off':
+            targ_y[ti] = np.nan
+    return(targ_y)
+
+
+@njit()
+def interp_vprof(orig_array, src_p,
+                targ_p, interp_array,
+                nlat, nlon,
+                extrapolate):
+    """
+    Helper function for compute_VARNORMI. Speedup of ~100 time
+    compared to pure python code!
+    """
+    for lat_ind in range(nlat):
+        for lon_ind in range(nlon):
+            src_val_col = orig_array[:, lat_ind, lon_ind]
+            src_p_col = src_p[:, lat_ind, lon_ind]
+            targ_p_col = targ_p[:, lat_ind, lon_ind]
+            #print(targ_p_col.shape)
+            ## np.interp does not work for extrapolation 
+            #interp_col = np.interp(targ_p_col, src_p_col, src_val_col)
+            ## scipty with extrapolation but slow
+            #f = interp1d(src_p_col, src_val_col, fill_value='extrapolate')
+            #interp_col = f(targ_p_col)
+            ## faster implementation with numba
+            interp_col = interp_extrap_1d(src_p_col, src_val_col, 
+                                        targ_p_col, extrapolate)
+            if np.any(np.isnan(interp_col)):
+                raise ValueError('Interpolated data contains NaN either due to '+
+                                'extrapolation turned off but data out of bounds, ' +
+                                'or because NaN are inherent to data!')
+            interp_array[:, lat_ind, lon_ind] = interp_col
+    #return(interp_array)
+
 
 def interp(var, P, targ_p, inp_vdim_name):
     targ = xr.zeros_like(var).isel({inp_vdim_name:range(len(targ_p))})
@@ -214,75 +357,6 @@ def debug_interp(var, P=None):
         var = var.mean(dim=['time','lon','lat'])
 
     return(var)
-
-
-@njit()
-def interp_extrap_1d(src_x, src_y, targ_x):
-    targ_y = np.zeros(len(targ_x))
-    for ti in range(len(targ_x)):
-        i1 = -1
-        i2 = -1
-        for si in range(len(src_x)):
-            #print(src_x[si])
-            ty = np.nan
-            # extrapolate start
-            if (si == 0) and src_x[si] > targ_x[ti]:
-                i1 = si
-                i2 = si + 1
-                break
-            # exact match
-            elif src_x[si] == targ_x[ti]:
-                i1 = si
-                i2 = si
-                break
-            # we found upper src_x
-            elif src_x[si] > targ_x[ti]:
-                i1 = si - 1
-                i2 = si
-                break
-            # we are still smaller than targ_x[ti] 
-            else:
-                pass
-
-        # extrapolate end
-        if i1 == -1:
-            i1 = len(src_x) - 2
-            i2 = len(src_x) - 1
-
-        if i1 == i2:
-            targ_y[ti] = src_y[i1]
-        else:
-            targ_y[ti] = (
-                src_y[i1] + (targ_x[ti] - src_x[i1]) * 
-                (src_y[i2] - src_y[i1]) / (src_x[i2] - src_x[i1])
-            )
-    return(targ_y)
-
-
-@njit()
-def interp_vprof(orig_array, src_p,
-                targ_p, interp_array,
-                nlat, nlon):
-    """
-    Helper function for compute_VARNORMI. Speedup of ~100 time
-    compared to pure python code!
-    """
-    for lat_ind in range(nlat):
-        for lon_ind in range(nlon):
-            src_val_col = orig_array[:, lat_ind, lon_ind]
-            src_p_col = src_p[:, lat_ind, lon_ind]
-            targ_p_col = targ_p[:, lat_ind, lon_ind]
-            #print(targ_p_col.shape)
-            ## np.interp does not work for extrapolation 
-            #interp_col = np.interp(targ_p_col, src_p_col, src_val_col)
-            ## scipty with extrapolation but slow
-            #f = interp1d(src_p_col, src_val_col, fill_value='extrapolate')
-            #interp_col = f(targ_p_col)
-            ## faster implementation with numba
-            interp_col = interp_extrap_1d(src_p_col, src_val_col, targ_p_col)
-            interp_array[:, lat_ind, lon_ind] = interp_col
-    #return(interp_array)
-
 
 
 def determine_p_ref(p_era, p_pgw, p_ref_last, p_ref_opts):

@@ -89,10 +89,12 @@ if performinterp:
     #see documentation in interpolate.py
     # run e.g. cdo sellonlatbox,-65,35,-45,30
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/MPI-ESM1-2-HR/plev'
+    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon/MPI-ESM1-2-HR'
     gcm_delta_base='plev_{}_delta.nc'
     gcm_data_freq = 'month'
 
     out_path = '/scratch/snx3000/heimc/pgw/interpolated_plev/'
+    out_path = '/scratch/snx3000/heimc/pgw/interpolated_Emon/'
     ###########################################################################
 
     for var_name in var_names:  
@@ -110,6 +112,7 @@ if regridhori:
     ### Namelist
     ###########################################################################
     infolder = '/scratch/snx3000/heimc/pgw/interpolated_plev/'
+    infolder = '/scratch/snx3000/heimc/pgw/interpolated_Emon/'
 
     #outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_12/'
     #out_grid_file = 'target_grid_SA_12'
@@ -118,6 +121,7 @@ if regridhori:
     #out_grid_file = 'target_grid_SA_3'
 
     outputfolder = '/scratch/snx3000/heimc/pgw/regridded_era5/'
+    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_era5_Emon/'
     out_grid_file = 'target_grid_era5'
     ###########################################################################
 
@@ -136,7 +140,7 @@ if regridhorinew:
     ### Namelist
     ###########################################################################
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/MPI-ESM1-2-HR/plev'
-    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon'
+    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon/MPI-ESM1-2-HR'
     delta_inp_name_base='plev_{}_delta.nc'
     delta_out_name_base='{}_delta.nc'
 
@@ -153,12 +157,12 @@ if regridhorinew:
     #out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test/'
     out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test2/'
     out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test3/'
-    out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon_test3/'
-    #out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon/'
+    #out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon_test3/'
+    out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon/'
     out_grid_file = 'target_grid_era5'
     #out_grid_file = 'target_grid_era5_test'
     #out_grid_file = 'target_grid_era5_test2'
-    out_grid_file = 'target_grid_era5_test3'
+    #out_grid_file = 'target_grid_era5_test3'
     #target_file_path = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_ctrl/int2lm_in'
     ###########################################################################
 
