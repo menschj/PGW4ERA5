@@ -90,8 +90,8 @@ def get_delta_interp_era5(var, target_P, var_name, laffile, delta_inp_path,
                         diff_time_step)
     delta = delta.assign_coords({'lat':var.lat.values})
 
-    if var_name == 'ta':
-        sfc_var_name = 'tas'
+    if var_name in ['ta','hur']:
+        sfc_var_name = var_name + 's'
         delta_sfc = load_delta(delta_inp_path, sfc_var_name, 
                             date_time, laffile.time,
                             diff_time_step)
@@ -138,16 +138,16 @@ def replace_delta_sfc(source_P, ps_hist, delta, delta_sfc):
 
 def vert_interp_delta(delta, target_P, delta_sfc, ps_hist):
 
-    #print(delta)
-    if delta.name in ['hus', 'QV']:
-        print('WARNING: DEBUG MODE FOR variable hus model top!!!')
-        top = xr.zeros_like(delta.sel(plev=100000))
-        top['plev'] = 500
-        delta = xr.concat([delta, top], dim='plev').transpose(
-                                    'time', 'plev', 'lat', 'lon')
-        #print(delta.mean(dim=['lat','lon','time']))
-        #print(delta.plev)
-        #quit()
+    ##print(delta)
+    #if delta.name in ['hus', 'QV']:
+    #    print('WARNING: DEBUG MODE FOR variable hus model top!!!')
+    #    top = xr.zeros_like(delta.sel(plev=100000))
+    #    top['plev'] = 500
+    #    delta = xr.concat([delta, top], dim='plev').transpose(
+    #                                'time', 'plev', 'lat', 'lon')
+    #    #print(delta.mean(dim=['lat','lon','time']))
+    #    #print(delta.plev)
+    #    #quit()
 
     # sort delta dataset from top to bottom (pressure ascending)
     delta = delta.reindex(plev=list(reversed(delta.plev)))
@@ -193,6 +193,10 @@ def vert_interp_delta(delta, target_P, delta_sfc, ps_hist):
         raise ValueError()
     if target_P.dims != ('time', 'level', 'lat', 'lon'):
         raise ValueError()
+
+    if np.min(target_P) < np.min(source_P):
+        raise ValueError('ERA5 top pressure is lower than '+
+                         'climate delta top pressure!')
 
     delta_interp = interp_nonfixed(delta, source_P, target_P,
                         'plev', 'level',

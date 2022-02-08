@@ -26,7 +26,7 @@ print(args)
 performsmooth   = 0
 performinterp   = 1
 regridhori      = 1
-regridhorinew   = 0
+regridhorinew   = 1
 regridvert      = 0 # not used anymore for era5
 
 # number of output time steps in total
@@ -91,12 +91,12 @@ if performinterp:
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon/MPI-ESM1-2-HR'
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Amon/MPI-ESM1-2-HR'
 
-    gcm_delta_base='plev_{}_delta.nc'
-    #gcm_delta_base='plev_{}_historical.nc'
+    gcm_delta_base='{}_delta.nc'
+    #gcm_delta_base='{}_historical.nc'
     gcm_data_freq = 'month'
 
-    out_path = '/scratch/snx3000/heimc/pgw/interpolated_Emon/'
-    out_path = '/scratch/snx3000/heimc/pgw/interpolated_Amon/'
+    out_path = '/scratch/snx3000/heimc/pgw/interp_old/Emon/MPI-ESM1-2-HR'
+    out_path = '/scratch/snx3000/heimc/pgw/interp_old/Amon/MPI-ESM1-2-HR'
     ###########################################################################
 
     for var_name in var_names:  
@@ -113,17 +113,11 @@ if regridhori:
     ###########################################################################
     ### Namelist
     ###########################################################################
-    infolder = '/scratch/snx3000/heimc/pgw/interpolated_Emon/'
-    infolder = '/scratch/snx3000/heimc/pgw/interpolated_Amon/'
+    infolder = '/scratch/snx3000/heimc/pgw/interp_old/Emon/MPI-ESM1-2-HR'
+    infolder = '/scratch/snx3000/heimc/pgw/interp_old/Amon/MPI-ESM1-2-HR'
 
-    #outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_12/'
-    #out_grid_file = 'target_grid_SA_12'
-
-    #outputfolder = '/scratch/snx3000/heimc/pgw/regridded_alt2_SA_3/'
-    #out_grid_file = 'target_grid_SA_3'
-
-    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_era5_Emon/'
-    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_era5_Amon/'
+    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_old/Emon/MPI-ESM1-2-HR'
+    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_old/Amon/MPI-ESM1-2-HR'
     out_grid_file = 'target_grid_era5'
     ###########################################################################
 
@@ -141,26 +135,22 @@ if regridhorinew:
     ###########################################################################
     ### Namelist
     ###########################################################################
-    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/MPI-ESM1-2-HR/plev'
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon/MPI-ESM1-2-HR'
-    delta_inp_name_base='plev_{}_delta.nc'
+    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Amon/MPI-ESM1-2-HR'
+    delta_inp_name_base='{}_delta.nc'
     delta_out_name_base='{}_delta.nc'
 
-    delta_inp_name_base='plev_{}_historical.nc'
-    delta_out_name_base='{}_historical.nc'
+    #delta_inp_name_base='{}_historical.nc'
+    #delta_out_name_base='{}_historical.nc'
 
-    #delta_inp_name_base='plev_{}_ssp585.nc'
+    #delta_inp_name_base='{}_ssp585.nc'
     #delta_out_name_base='{}_ssp585.nc'
 
     #gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/test2/MPI-ESM1-2-HR'
     #delta_name_base='plev_{}_delta.nc'
 
-    out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5/'
-    #out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test/'
-    out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test2/'
-    out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_test3/'
-    #out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon_test3/'
-    out_dir = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon/'
+    out_dir = '/scratch/snx3000/heimc/pgw/regridded/Emon/MPI-ESM1-2-HR'
+    out_dir = '/scratch/snx3000/heimc/pgw/regridded/Amon/MPI-ESM1-2-HR'
     out_grid_file = 'target_grid_era5'
     #out_grid_file = 'target_grid_era5_test'
     #out_grid_file = 'target_grid_era5_test2'

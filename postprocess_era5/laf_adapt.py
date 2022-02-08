@@ -60,10 +60,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     timer.start('all')
 
     laffile = xr.open_dataset(inp_laf_path, decode_cf=False)
-    print('load done')
-
     laffile.time.attrs['units'] = new_time_string
-
 
     # compute pressure on era5 levels
     P_era = (laffile.akm + laffile.PS * laffile.bkm).transpose(
@@ -76,16 +73,15 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     laffile['RELHUM'] = specific_to_relative_humidity(
                         laffile.QV, P_era, laffile.T).transpose(
                         'time', 'level', 'lat', 'lon')
-    print('rh computed')
 
-    p_ref_inp = 50000
+    #p_ref_inp = 50000
     p_ref_inp = None
     adj_factor = 0.95
     thresh_phi_ref_max_error = 0.10
     #max_n_iter = 6
     max_n_iter = 8
-    extrapolate = 'linear'
-    extrapolate = 'constant'
+    #extrapolate = 'linear'
+    #extrapolate = 'constant'
     #extrapolate = 'off'
 
 
@@ -105,6 +101,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     ### interpolate climate deltas onto ERA5 grid
     deltas = {}
     for var_name in ['T',RELHUM_or_QV_delta,'U','V']:
+        print(var_name)
         delta_var = get_delta_interp_era5(
                 laffile[var_name],
                 P_era, delta_var_name_map[var_name], laffile, 
@@ -266,10 +263,12 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     #phi_ref_pgw.to_netcdf('test.nc')
     #quit()
     dPS = PS_pgw-laffile.PS 
-    dPS.to_netcdf('delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref_inp, laf_dt))
-    dPS.values -= xr.open_dataset('climate_delta_ps.nc').ps.values
-    print('mean error PS: {}'.format(dPS.mean().values))
-    dPS.to_netcdf('error_delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref_inp, laf_dt))
+    dPS.to_netcdf(os.path.join(Path(out_laf_path).parents[0], 
+            'delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref_inp, laf_dt)))
+    #dPS.to_netcdf('delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref_inp, laf_dt))
+    #dPS.values -= xr.open_dataset('climate_delta_ps.nc').ps.values
+    #print('mean error PS: {}'.format(dPS.mean().values))
+    #dPS.to_netcdf('error_delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref_inp, laf_dt))
     ## TODO DEBUG stop
 
     ## replace T and QV in ERA file
@@ -346,17 +345,17 @@ if __name__ == "__main__":
     sim_name_base = args.sim_name_base
     wd_path = '/scratch/snx3000/heimc/lmp/wd'
     changeyears = 0
-    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_era5_Amon'
-    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_era5_Emon'
+    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_old/Emon/MPI-ESM1-2-HR'
+    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_old/Amon/MPI-ESM1-2-HR'
 
-    #delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Amon'
-    #delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon'
-    #delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_delta_era5_Emon_test3'
+    #delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded/Emon/MPI-ESM1-2-HR'
+    #delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded/Amon/MPI-ESM1-2-HR'
 
     RELHUM_or_QV_delta = 'RELHUM'
-    RELHUM_or_QV_delta = 'QV'
+    #RELHUM_or_QV_delta = 'QV'
 
     pgw_sim_name_ending = 'pgw9'
+    pgw_sim_name_ending = 'pgw10'
 
 
     pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)
