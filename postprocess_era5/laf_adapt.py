@@ -41,7 +41,7 @@ from package.mp import IterMP
 delta_var_name_map = {
     'PHI':      'zg',
     'T':        'ta',
-    'T_S':      'tas',
+    'T_SKIN':   'tas',
     'RELHUM':   'hur',
     'QV':       'hus',
     'U':        'ua',
@@ -74,6 +74,30 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
                         laffile.QV, P_era, laffile.T).transpose(
                         'time', 'level', 'lat', 'lon')
 
+
+    # also update T_SKIN 
+    var_name = 'T_SKIN'
+    print('update {}'.format(var_name))
+    delta_T_SKIN = get_delta_era5(laffile.T_SKIN,
+                    delta_var_name_map[var_name], laffile, 
+                    delta_inp_path, delta_time_step, laf_dt)
+    laffile.T_SKIN.values += delta_T_SKIN.values
+
+    # update T_SO
+    var_name = 'T_SO'
+    print('update {}'.format(var_name))
+    delta_T_SO_clim = get_delta_era5(laffile.T_SKIN,
+                    delta_var_name_map['T_SKIN'], 
+                    laffile, delta_inp_path,
+                    delta_time_step, date_time=None).mean(dim=['time'])
+    delta_T_SO = (
+            delta_T_SO_clim + np.exp(-laffile.soil1/2.8) * 
+                    (delta_T_SKIN - delta_T_SO_clim)
+    )
+    delta_T_SO = delta_T_SO.transpose('time', 'soil1', 'lat', 'lon')
+    laffile.T_SO.values += delta_T_SO
+
+
     #p_ref_inp = 50000
     p_ref_inp = None
     adj_factor = 0.95
@@ -101,7 +125,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     ### interpolate climate deltas onto ERA5 grid
     deltas = {}
     for var_name in ['T',RELHUM_or_QV_delta,'U','V']:
-        print(var_name)
+        print('update {}'.format(var_name))
         delta_var = get_delta_interp_era5(
                 laffile[var_name],
                 P_era, delta_var_name_map[var_name], laffile, 
@@ -296,15 +320,6 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     #    laffile[var_name] = var_pgw
 
 
-    # also update T_SKIN 
-    var_name = 'T_S'
-    print('add {}'.format(var_name))
-    delta_T_SKIN = get_delta_era5(laffile.T_SKIN,
-                    delta_var_name_map['T_S'], laffile, 
-                    delta_inp_path, delta_time_step, laf_dt)
-    laffile.T_SKIN.values += delta_T_SKIN.values
-
-
 
     laffile.to_netcdf(out_laf_path, mode='w')
     laffile.close()
@@ -320,6 +335,71 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
 
 
 if __name__ == "__main__":
+
+    ### TODO test soil temperature
+    #land_thresh = 0.5
+    #cas2 = xr.open_dataset('cas20060801000000.nc')
+    #laf2 = xr.open_dataset('ORIG_laf20060801000000.nc')
+    #laf1 = xr.open_dataset('laf20060801000000.nc')
+
+    #tskin2 = cas2.T_SKIN.where(cas2.FR_LAND > land_thresh)
+    #tso2 = laf2.T_SO.where(laf2.FR_LAND > land_thresh)
+    #ts2 = laf2.T_S.where(laf2.FR_LAND > land_thresh)
+    #tso1 = laf1.T_SO.where(laf1.FR_LAND > land_thresh)
+    #ts1 = laf1.T_S.where(laf1.FR_LAND > land_thresh)
+    #soil1 = laf1.soil1
+
+    ###tskin2 = tskin2.mean(dim=['time','lon','lat'])
+    ##tso1 = tso1.mean(dim=['time','rlon','rlat'])
+    ##ts1 = ts1.mean(dim=['time','rlon','rlat'])
+    ##tso2 = tso2.mean(dim=['time','rlon','rlat'])
+    ##ts2 = ts2.mean(dim=['time','rlon','rlat'])
+
+    #lon_ind = 2821
+    #lat_ind = 2147
+    ##lat_ind = 1100
+    #lon = -10.59
+    #lat = 16.76
+
+    ###tskin2 = tskin2.mean(dim=['time','lon','lat'])
+    ##tso1 = tso1.isel(rlon=lon_ind, rlat=lat_ind).mean(dim=['time'])
+    ##ts1 = ts1.isel(rlon=lon_ind, rlat=lat_ind).mean(dim=['time'])
+    ##tso2 = tso2.isel(rlon=lon_ind, rlat=lat_ind).mean(dim=['time'])
+    ##ts2 = ts2.isel(rlon=lon_ind, rlat=lat_ind).mean(dim=['time'])
+
+    #tso1 = tso1.sel(rlon=lon,   rlat=lat).mean(dim=['time'])
+    #ts1 = ts1.sel(rlon=lon,     rlat=lat).mean(dim=['time'])
+    #tso2 = tso2.sel(rlon=lon,   rlat=lat).mean(dim=['time'])
+    #ts2 = ts2.sel(rlon=lon,     rlat=lat).mean(dim=['time'])
+
+    ##print('tskin cas {}'.format(tskin2.values))
+    #print('ts1 laf {}'.format(ts1.values))
+    #print('ts2 laf {}'.format(ts2.values))
+    #print(tso1.values)
+    #print(tso2.values)
+    #print()
+    #print(tso2.values - tso1.values)
+    #print(tso2.values - ts1.values)
+    #print()
+    #print(ts1.values - tso1.values)
+    #print(np.exp(-soil1.values/2.8))
+    #tso2_derived = tso1.values + np.exp(-soil1.values/2.8) * (ts1.values - tso1[0].values)
+    #tso2_derived[-1] = tso1[-1]
+    ##tso2_derived = tso1.values + (1-blend_func(soil1.values,12)) * (ts1.values - tso1[0].values)
+
+    ##t_so_lm(i,j,kso) = t_cl_lm(i,j) + (t_s_lm(i,j) - t_cl_lm(i,j)) * EXP(-zmls(kso)/2.8)
+
+    #print(tso2_derived-tso2.values)
+    #print(np.max(np.abs(tso2_derived-tso2.values)))
+    #print(np.mean(np.abs(tso2_derived-tso2.values)))
+
+    #plt.scatter(tso1, soil1)
+    #plt.scatter(tso2, soil1)
+    #plt.plot(tso2_derived, soil1)
+    ##plt.plot(tso2_derived-tso2, soil1)
+    #plt.show()
+    #quit()
+    ### TODO test soil temperature
 
     ## input arguments
     parser = argparse.ArgumentParser(description =
@@ -348,7 +428,7 @@ if __name__ == "__main__":
     delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_old/Emon/MPI-ESM1-2-HR'
     delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded_old/Amon/MPI-ESM1-2-HR'
 
-    #delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded/Emon/MPI-ESM1-2-HR'
+    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded/Emon/MPI-ESM1-2-HR'
     #delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded/Amon/MPI-ESM1-2-HR'
 
     RELHUM_or_QV_delta = 'RELHUM'
@@ -356,6 +436,7 @@ if __name__ == "__main__":
 
     pgw_sim_name_ending = 'pgw9'
     pgw_sim_name_ending = 'pgw10'
+    pgw_sim_name_ending = 'pgw11'
 
 
     pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)

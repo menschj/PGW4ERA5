@@ -49,35 +49,38 @@ def fix_grid_coord_diffs(fix_ds, ref_ds):
         fix_ds['rlat'] = ref_ds.rlat
 
 
-def load_delta(delta_inp_path, var_name, date_time, 
+def load_delta(delta_inp_path, var_name, delta_date_time, 
                 laf_time, diff_time_step,
                 name_base='{}_delta.nc'):
 
-    #delta_year = xr.open_dataset(os.path.join(delta_inp_path,
-    #                        name_base.format(var_name)))
-    ## replace delta year values with year of current date_time
-    #for i in range(len(delta_year.time)):
-    #    delta_year.time.values[i] = dt64_to_dt(
-    #                delta_year.time[i]).replace(year=date_time.year)
-    ## interpolate in time and select variable
-    #delta = delta_year[var_name].interp(time=date_time, 
-    #                            method='linear', 
-    #                        ).expand_dims(dim='time', axis=0)
+    delta_year = xr.open_dataset(os.path.join(delta_inp_path,
+                            name_base.format(var_name)))
+    if delta_date_time is not None:
+        # replace delta year values with year of current delta_date_time
+        for i in range(len(delta_year.time)):
+            delta_year.time.values[i] = dt64_to_dt(
+                        delta_year.time[i]).replace(year=delta_date_time.year)
+        # interpolate in time and select variable
+        delta = delta_year[var_name].interp(time=delta_date_time, 
+                                    method='linear', 
+                                ).expand_dims(dim='time', axis=0)
+        # make sure time is in the same format as in laf file
+        delta['time'] = laf_time
+    else:
+        delta = delta_year[var_name]
+
+
+    #name_base = name_base.split('.nc')[0] + '_{:05d}.nc'
+    #delta = xr.open_dataset(os.path.join(delta_inp_path,
+    #        name_base.format(var_name, diff_time_step)))[var_name]
     ## make sure time is in the same format as in laf file
     #delta['time'] = laf_time
-
-
-    name_base = name_base.split('.nc')[0] + '_{:05d}.nc'
-    delta = xr.open_dataset(os.path.join(delta_inp_path,
-            name_base.format(var_name, diff_time_step)))[var_name]
-    # make sure time is in the same format as in laf file
-    delta['time'] = laf_time
     
     return(delta)
 
 
 def get_delta_era5(var, var_name, laffile, delta_inp_path,
-                    diff_time_step, date_time):
+                    diff_time_step, date_time=None):
     delta = load_delta(delta_inp_path, var_name, date_time, laffile.time,
                         diff_time_step)
     delta = delta.assign_coords({'lat':var.lat.values})
