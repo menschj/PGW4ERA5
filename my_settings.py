@@ -89,14 +89,14 @@ if performinterp:
     #see documentation in interpolate.py
     # run e.g. cdo sellonlatbox,-65,35,-45,30
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon/MPI-ESM1-2-HR'
-    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Amon/MPI-ESM1-2-HR'
+    #gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Amon/MPI-ESM1-2-HR'
 
     gcm_delta_base='{}_delta.nc'
     #gcm_delta_base='{}_historical.nc'
     gcm_data_freq = 'month'
 
     out_path = '/scratch/snx3000/heimc/pgw/interp_old/Emon/MPI-ESM1-2-HR'
-    out_path = '/scratch/snx3000/heimc/pgw/interp_old/Amon/MPI-ESM1-2-HR'
+    #out_path = '/scratch/snx3000/heimc/pgw/interp_old/Amon/MPI-ESM1-2-HR'
     ###########################################################################
 
     for var_name in var_names:  
@@ -114,10 +114,10 @@ if regridhori:
     ### Namelist
     ###########################################################################
     infolder = '/scratch/snx3000/heimc/pgw/interp_old/Emon/MPI-ESM1-2-HR'
-    infolder = '/scratch/snx3000/heimc/pgw/interp_old/Amon/MPI-ESM1-2-HR'
+    #infolder = '/scratch/snx3000/heimc/pgw/interp_old/Amon/MPI-ESM1-2-HR'
 
     outputfolder = '/scratch/snx3000/heimc/pgw/regridded_old/Emon/MPI-ESM1-2-HR'
-    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_old/Amon/MPI-ESM1-2-HR'
+    #outputfolder = '/scratch/snx3000/heimc/pgw/regridded_old/Amon/MPI-ESM1-2-HR'
     out_grid_file = 'target_grid_era5'
     ###########################################################################
 
@@ -136,7 +136,7 @@ if regridhorinew:
     ### Namelist
     ###########################################################################
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon/MPI-ESM1-2-HR'
-    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Amon/MPI-ESM1-2-HR'
+    #gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Amon/MPI-ESM1-2-HR'
     delta_inp_name_base='{}_delta.nc'
     delta_out_name_base='{}_delta.nc'
 
@@ -150,7 +150,7 @@ if regridhorinew:
     #delta_name_base='plev_{}_delta.nc'
 
     out_dir = '/scratch/snx3000/heimc/pgw/regridded/Emon/MPI-ESM1-2-HR'
-    out_dir = '/scratch/snx3000/heimc/pgw/regridded/Amon/MPI-ESM1-2-HR'
+    #out_dir = '/scratch/snx3000/heimc/pgw/regridded/Amon/MPI-ESM1-2-HR'
     out_grid_file = 'target_grid_era5'
     #out_grid_file = 'target_grid_era5_test'
     #out_grid_file = 'target_grid_era5_test2'

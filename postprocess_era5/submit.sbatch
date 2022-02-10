@@ -1,9 +1,9 @@
 #!/bin/bash -l
 #
-#SBATCH --job-name="post pgw8"
-#SBATCH --time=23:30:00
+#SBATCH --job-name="post pgw12"
+#SBATCH --time=00:30:00
 #SBATCH --cpus-per-task=12
-#SBATCH --partition=normal
+#SBATCH --partition=debug
 #SBATCH --output=/scratch/snx3000/heimc/pgw/out_scripts/out0
 #SBATCH --error=/scratch/snx3000/heimc/pgw/out_scripts/err0
 #SBATCH --ntasks=1
@@ -48,7 +48,8 @@ arg_l=2006082100
 #arg_l=${year}${end_month}${end_dayhr}
 
 srun -c $SLURM_CPUS_PER_TASK python -u laf_adapt.py -d 3 \
-                -f ${arg_f} -l ${arg_l} -s ${sim_start_date}
+                -f ${arg_f} -l ${arg_l} -s ${sim_start_date} \
+                -p $SLURM_CPUS_PER_TASK
 
 
 
