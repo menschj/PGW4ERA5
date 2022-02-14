@@ -53,28 +53,28 @@ def load_delta(delta_inp_path, var_name, delta_date_time,
                 laf_time, diff_time_step,
                 name_base='{}_delta.nc'):
 
-    #delta_year = xr.open_dataset(os.path.join(delta_inp_path,
-    #                        name_base.format(var_name)))
-    #if delta_date_time is not None:
-    #    # replace delta year values with year of current delta_date_time
-    #    for i in range(len(delta_year.time)):
-    #        delta_year.time.values[i] = dt64_to_dt(
-    #                    delta_year.time[i]).replace(year=delta_date_time.year)
-    #    # interpolate in time and select variable
-    #    delta = delta_year[var_name].interp(time=delta_date_time, 
-    #                                method='linear', 
-    #                            ).expand_dims(dim='time', axis=0)
-    #    # make sure time is in the same format as in laf file
-    #    delta['time'] = laf_time
-    #else:
-    #    delta = delta_year[var_name]
+    delta_year = xr.open_dataset(os.path.join(delta_inp_path,
+                            name_base.format(var_name)))
+    if delta_date_time is not None:
+        # replace delta year values with year of current delta_date_time
+        for i in range(len(delta_year.time)):
+            delta_year.time.values[i] = dt64_to_dt(
+                        delta_year.time[i]).replace(year=delta_date_time.year)
+        # interpolate in time and select variable
+        delta = delta_year[var_name].interp(time=delta_date_time, 
+                                    method='linear', 
+                                ).expand_dims(dim='time', axis=0)
+        # make sure time is in the same format as in laf file
+        delta['time'] = laf_time
+    else:
+        delta = delta_year[var_name]
 
+    #name_base = name_base.split('.nc')[0] + '_{:05d}.nc'
+    #delta = xr.open_dataset(os.path.join(delta_inp_path,
+    #        name_base.format(var_name, diff_time_step)))[var_name]
+    ## make sure time is in the same format as in laf file
+    #delta['time'] = laf_time
 
-    name_base = name_base.split('.nc')[0] + '_{:05d}.nc'
-    delta = xr.open_dataset(os.path.join(delta_inp_path,
-            name_base.format(var_name, diff_time_step)))[var_name]
-    # make sure time is in the same format as in laf file
-    delta['time'] = laf_time
     
     return(delta)
 
@@ -141,16 +141,16 @@ def replace_delta_sfc(source_P, ps_hist, delta, delta_sfc):
 
 def vert_interp_delta(delta, target_P, delta_sfc, ps_hist):
 
-    #print(delta)
-    if delta.name in ['hus', 'QV']:
-        print('WARNING: DEBUG MODE FOR variable hus model top!!!')
-        top = xr.zeros_like(delta.sel(plev=100000))
-        top['plev'] = 500
-        delta = xr.concat([delta, top], dim='plev').transpose(
-                                    'time', 'plev', 'lat', 'lon')
-        #print(delta.mean(dim=['lat','lon','time']))
-        #print(delta.plev)
-        #quit()
+    ##print(delta)
+    #if delta.name in ['hus', 'QV']:
+    #    print('WARNING: DEBUG MODE FOR variable hus model top!!!')
+    #    top = xr.zeros_like(delta.sel(plev=100000))
+    #    top['plev'] = 500
+    #    delta = xr.concat([delta, top], dim='plev').transpose(
+    #                                'time', 'plev', 'lat', 'lon')
+    #    #print(delta.mean(dim=['lat','lon','time']))
+    #    #print(delta.plev)
+    #    #quit()
 
     # sort delta dataset from top to bottom (pressure ascending)
     delta = delta.reindex(plev=list(reversed(delta.plev)))
@@ -281,7 +281,7 @@ def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
             require_extrap = True
 
         if require_extrap and extrapolate == 'off':
-            raise ValueError('Extrapolation turned off but data out of bounds.')
+            raise ValueError('Extrapolation deactivated but data out of bounds.')
 
         if i1 == i2:
             targ_y[ti] = src_y[i1]

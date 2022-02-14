@@ -24,11 +24,10 @@ from base.functions import (
         determine_p_ref,
         )
 from package.utilities import Timer
-from cdo import *
 
 
-delta_var_name_map = {
-    'T_CL':      'tas',
+var_name_map = {
+    'tas':  'T_CL',
 }
 
 
@@ -39,40 +38,31 @@ def extpar_adapt(ext_file_path, delta_inp_path):
     timer = Timer('seconds')
     timer.start('all')
 
-    cdo = Cdo()
-
     ext_file = xr.open_dataset(ext_file_path, decode_cf=False)
 
     # update T_C
-    var_name = 'T_CL'
+    var_name = 'tas'
     print('update {}'.format(var_name))
 
     name_base='{}_delta.nc'
-    delta_inp_file = os.path.join(delta_inp_path,
-                            name_base.format(delta_var_name_map['T_CL']))
-    griddes_file = 'grid_extpar'
-    ofile = cdo.remapbil(griddes_file, input=delta_inp_file, options='-f nc')
-    delta_T_SO_clim = xr.open_dataset(ofile)
-    print(delta_T_SO_clim.tas.shape)
-    quit()
-    delta_T_SO_clim = xr.open_dataset()
+    delta_tas = load_delta(delta_inp_path, var_name, None, 
+                            None, None)
 
-    delta_T_SO_clim = delta_T_SO_clim.assign_coords({'lat':ext_file.rlat.values})
-    delta_T_SO_clim = delta_T_SO_clim.mean(dim=['time'])
+    # TODO: debug for too small domain 
+    delta_tas = delta_tas.where(~np.isnan(delta_tas), 0)
 
-    print(delta_T_SO_clim)
-    quit()
-    delta_T_SO = (
-            delta_T_SO_clim + np.exp(-laffile.soil1/2.8) * 
-                    (delta_T_SKIN - delta_T_SO_clim)
-    )
-    delta_T_SO = delta_T_SO.transpose('time', 'soil1', 'lat', 'lon')
-    laffile.T_SO.values += delta_T_SO
+    # Make sure dimensions are exactly the same.
+    # There are numerical differences between CDO remapped objects
+    # and xarray data...
+    delta_tas = delta_tas.assign_coords(
+                    {'rlat':ext_file.rlat.values,
+                     'rlon':ext_file.rlon.values})
 
-    laffile['PS'] = PS_pgw
+    delta_tas_clim = delta_tas.mean(dim=['time'])
+    ext_file[var_name_map[var_name]].values += delta_tas_clim
 
-    laffile.to_netcdf(out_laf_path, mode='w')
-    laffile.close()
+    ext_file.to_netcdf(ext_file_path, mode='w')
+    ext_file.close()
     timer.stop('all')
     timer.print_report()
 
@@ -89,12 +79,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description =
                     'Perturb Extpar soil temperature climatology with PGW climate delta.')
     # extpar file to modify
-    parser.add_argument('-f', '--extpar_file_path', type=str, default=None)
+    parser.add_argument('extpar_file_path', type=str)
     args = parser.parse_args()
     print(args)
 
-
-    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded/Emon/MPI-ESM1-2-HR'
+    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded/Emon/extpar_SA_3'
     #delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded/Amon/MPI-ESM1-2-HR'
 
     extpar_adapt(args.extpar_file_path, delta_inp_path)

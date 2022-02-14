@@ -24,8 +24,8 @@ args = parser.parse_args()
 print(args)
 
 performsmooth   = 0
-performinterp   = 1
-regridhori      = 1
+performinterp   = 0
+regridhori      = 0
 regridhorinew   = 1
 regridvert      = 0 # not used anymore for era5
 
@@ -38,7 +38,6 @@ var_name_map = {
         'hurs'  :'RELHUM_S',
         'ta'    :'T', 
         'tas'   :'T_S', 
-        #'pa'    :'PP',  # does not work for plev
         'ps'    :'PS', 
         'ua'    :'U', 
         'va'    :'V',
@@ -89,6 +88,7 @@ if performinterp:
     #see documentation in interpolate.py
     # run e.g. cdo sellonlatbox,-65,35,-45,30
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon/MPI-ESM1-2-HR'
+    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon_RHint/MPI-ESM1-2-HR'
     #gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Amon/MPI-ESM1-2-HR'
 
     gcm_delta_base='{}_delta.nc'
@@ -96,6 +96,7 @@ if performinterp:
     gcm_data_freq = 'month'
 
     out_path = '/scratch/snx3000/heimc/pgw/interp_old/Emon/MPI-ESM1-2-HR'
+    out_path = '/scratch/snx3000/heimc/pgw/interp_old/Emon_RHint/MPI-ESM1-2-HR'
     #out_path = '/scratch/snx3000/heimc/pgw/interp_old/Amon/MPI-ESM1-2-HR'
     ###########################################################################
 
@@ -114,9 +115,11 @@ if regridhori:
     ### Namelist
     ###########################################################################
     infolder = '/scratch/snx3000/heimc/pgw/interp_old/Emon/MPI-ESM1-2-HR'
+    infolder = '/scratch/snx3000/heimc/pgw/interp_old/Emon_RHint/MPI-ESM1-2-HR'
     #infolder = '/scratch/snx3000/heimc/pgw/interp_old/Amon/MPI-ESM1-2-HR'
 
     outputfolder = '/scratch/snx3000/heimc/pgw/regridded_old/Emon/MPI-ESM1-2-HR'
+    outputfolder = '/scratch/snx3000/heimc/pgw/regridded_old/Emon_RHint/MPI-ESM1-2-HR'
     #outputfolder = '/scratch/snx3000/heimc/pgw/regridded_old/Amon/MPI-ESM1-2-HR'
     out_grid_file = 'target_grid_era5'
     ###########################################################################
@@ -136,6 +139,7 @@ if regridhorinew:
     ### Namelist
     ###########################################################################
     gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon/MPI-ESM1-2-HR'
+    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon_RHint/MPI-ESM1-2-HR'
     #gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Amon/MPI-ESM1-2-HR'
     delta_inp_name_base='{}_delta.nc'
     delta_out_name_base='{}_delta.nc'
@@ -149,32 +153,52 @@ if regridhorinew:
     #gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/test2/MPI-ESM1-2-HR'
     #delta_name_base='plev_{}_delta.nc'
 
-    out_dir = '/scratch/snx3000/heimc/pgw/regridded/Emon/MPI-ESM1-2-HR'
+    #out_dir = '/scratch/snx3000/heimc/pgw/regridded/Emon/extpar_SA_3'
+    #out_dir = '/scratch/snx3000/heimc/pgw/regridded/Emon_RHint/MPI-ESM1-2-HR'
+    out_dir = '/scratch/snx3000/heimc/pgw/regridded/Emon_xr/MPI-ESM1-2-HR'
     #out_dir = '/scratch/snx3000/heimc/pgw/regridded/Amon/MPI-ESM1-2-HR'
-    out_grid_file = 'target_grid_era5'
+    #out_grid_file = 'target_grid_SA_3'
+    #out_grid_file = 'target_grid_extpar_SA_3'
+    #out_grid_file = 'target_grid_era5'
     #out_grid_file = 'target_grid_era5_test'
     #out_grid_file = 'target_grid_era5_test2'
     #out_grid_file = 'target_grid_era5_test3'
-    #target_file_path = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_ctrl/int2lm_in'
+    target_file_path = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_ctrl/int2lm_in/cas20060801000000.nc'
     ###########################################################################
 
     Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-    #get the python command and write a file to submit to the piz daint machine
-    #comandreghor = f"python regrid_horizontal.py {infolder} {variable} {n_out_time_steps} {outputgridfile} {outputfolder} &> out_regrid.txt &" 
-    #subprocess.run(comandreghor, shell=True)
+    #for var_name in var_names:
+    #    print('regrid horizontal {}'.format(var_name))
+    #    inp_file = os.path.join(gcm_data_path, delta_inp_name_base.format(var_name))
+    #    out_file = os.path.join(out_dir, delta_out_name_base.format(var_name))
+    #    #print(inp_file)
+    #    #print(out_file)
+    #    cdo_remap(out_grid_file, inp_file, out_file, method='bil')
+
+    #    #target_file = os.path.join(target_file_path, 'cas20060805000000.nc')
+    #    #ds_gcm = xr.open_dataset(inp_file)
+    #    #ds_target = xr.open_dataset(target_file)
+    #    #regridder = xe.Regridder(ds_gcm, ds_target, "bilinear")
+    #    ##dr_out = regridder(dr)
+    #    #quit()
+
     for var_name in var_names:
         print('regrid horizontal {}'.format(var_name))
         inp_file = os.path.join(gcm_data_path, delta_inp_name_base.format(var_name))
         out_file = os.path.join(out_dir, delta_out_name_base.format(var_name))
         #print(inp_file)
         #print(out_file)
-        cdo_remap(out_grid_file, inp_file, out_file, method='bil')
-        #target_file = os.path.join(target_file_path, 'cas20060805000000.nc')
-        #ds_gcm = xr.open_dataset(inp_file)
-        #ds_target = xr.open_dataset(target_file)
-        #regridder = xe.Regridder(ds_gcm, ds_target, "bilinear")
-        ##dr_out = regridder(dr)
+        targ_lon = xr.open_dataset(target_file_path).lon
+        targ_lat = xr.open_dataset(target_file_path).lat
+        ds_in = xr.open_dataset(inp_file)
+        ds_out = ds_in.interp(lon=targ_lon, lat=targ_lat)
+        ds_out.to_netcdf(out_file)
+
+        #test = xr.open_dataset('/scratch/snx3000/heimc/pgw/regridded/Emon/MPI-ESM1-2-HR/tas_delta.nc')
+        #test = test.assign_coords({'lat':ds_out.lat.values})
+        #test = test - ds_out
+        #test.to_netcdf('test.nc')
         #quit()
 
 
