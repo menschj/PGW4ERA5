@@ -13,12 +13,8 @@ from base.functions import (
         relative_to_specific_humidity,
         get_delta_era5,
         get_delta_interp_era5,
-        integ_geopot_era5,
-        integ_geopot_downward_era5,
-        integ_pressure_era5,
-        integ_pressure_upward_era5,
+        integ_geopot,
         load_delta,
-        debug_interp,
         interp_nonfixed,
         interp_vprof,
         determine_p_ref,
@@ -42,8 +38,7 @@ var_name_map = {
 
 
 def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
-            delta_time_step, new_time_string, laf_dt,
-            RELHUM_or_QV_delta):
+            delta_time_step, new_time_string, laf_dt):
 
     timer = Timer('seconds')
     timer.start('all')
@@ -111,7 +106,7 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
     if not i_reinterp:
         ### interpolate climate deltas onto ERA5 grid
         deltas = {}
-        for var_name in ['T',RELHUM_or_QV_delta,'U','V']:
+        for var_name in ['T','RELHUM','U','V']:
             print('update {}'.format(var_name))
             delta_var = get_delta_interp_era5(
                     laffile[var_name],
@@ -126,19 +121,11 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
         var_name = 'V'
         V_pgw = laffile[var_name] + deltas[var_name]
 
-        if RELHUM_or_QV_delta == 'RELHUM':
-            var_name = 'RELHUM'
-            RELHUM_pgw = laffile[var_name] + deltas[var_name]
-            # convert relative humidity to speicifc humidity in pgw
-            QV_pgw = relative_to_specific_humidity(
-                        RELHUM_pgw, P_era, T_pgw)
-
-        elif RELHUM_or_QV_delta == 'QV':
-            var_name = 'QV'
-            QV_pgw = laffile[var_name] + deltas[var_name]
-
-        else: 
-            raise NotImplementedError()
+        var_name = 'RELHUM'
+        RELHUM_pgw = laffile[var_name] + deltas[var_name]
+        # convert relative humidity to speicifc humidity in pgw
+        QV_pgw = relative_to_specific_humidity(
+                    RELHUM_pgw, P_era, T_pgw)
 
 
     it = 1
@@ -167,34 +154,19 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
                     delta_inp_path, delta_time_step, laf_dt)
             T_pgw = T_era + dT
 
-            if RELHUM_or_QV_delta == 'RELHUM':
-                var_name = 'RELHUM'
-                RELHUM_era = interp_nonfixed(laffile.RELHUM, 
-                                P_era, P_pgw, 'level', 'level',
-                                extrapolate=extrapolate)
-                dRELHUM = get_delta_interp_era5(
-                        laffile[var_name],
-                        P_pgw, var_name_map[var_name], laffile, 
-                        delta_inp_path, delta_time_step, laf_dt)
-                RELHUM_pgw = RELHUM_era + dRELHUM
+            var_name = 'RELHUM'
+            RELHUM_era = interp_nonfixed(laffile.RELHUM, 
+                            P_era, P_pgw, 'level', 'level',
+                            extrapolate=extrapolate)
+            dRELHUM = get_delta_interp_era5(
+                    laffile[var_name],
+                    P_pgw, var_name_map[var_name], laffile, 
+                    delta_inp_path, delta_time_step, laf_dt)
+            RELHUM_pgw = RELHUM_era + dRELHUM
 
-                # convert relative humidity to speicifc humidity in pgw
-                QV_pgw = relative_to_specific_humidity(
-                            RELHUM_pgw, P_pgw, T_pgw)
-
-            elif RELHUM_or_QV_delta == 'QV':
-                var_name = 'QV'
-                QV_era = interp_nonfixed(laffile.QV, 
-                                P_era, P_pgw, 'level', 'level',
-                                extrapolate=extrapolate)
-                dQV = get_delta_interp_era5(
-                        laffile[var_name],
-                        P_pgw, var_name_map[var_name], laffile, 
-                        delta_inp_path, delta_time_step, laf_dt)
-                QV_pgw = QV_era + dQV
-
-            else: 
-                raise NotImplementedError()
+            # convert relative humidity to speicifc humidity in pgw
+            QV_pgw = relative_to_specific_humidity(
+                        RELHUM_pgw, P_pgw, T_pgw)
 
 
         # get p_ref
@@ -217,11 +189,11 @@ def lafadapt(inp_laf_path, out_laf_path, delta_inp_path,
             p_ref = p_ref_inp
 
         # compute updated geopotential at reference pressure
-        PHI_hl_pgw, phi_ref_pgw = integ_geopot_era5(P_hl_pgw,
+        PHI_hl_pgw, phi_ref_pgw = integ_geopot(P_hl_pgw,
                 laffile.FIS, T_pgw, QV_pgw, laffile.level1, p_ref)
 
         # recompute original geopotential
-        PHI_hl_era, phi_ref_era = integ_geopot_era5(P_hl_era,
+        PHI_hl_era, phi_ref_era = integ_geopot(P_hl_era,
                 laffile.FIS, laffile.T, laffile.QV, laffile.level1, p_ref)
 
         delta_phi_ref = phi_ref_pgw - phi_ref_era
@@ -334,12 +306,8 @@ if __name__ == "__main__":
     delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded/Emon_xr/MPI-ESM1-2-HR'
     #delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded/Amon/MPI-ESM1-2-HR'
 
-    RELHUM_or_QV_delta = 'RELHUM'
-    #RELHUM_or_QV_delta = 'QV'
-
     pgw_sim_name_ending = 'pgw'
     pgw_sim_name_ending = 'pgwtest'
-
 
     pgw_sim_start_date = sim_start_date + relativedelta(years=changeyears)
     laf_dts = np.arange(first_bc_step,
@@ -353,8 +321,7 @@ if __name__ == "__main__":
     Path(out_laf_dir).mkdir(parents=True, exist_ok=True)
 
     IMP = IterMP(njobs=args.n_par, run_async=True)
-    fargs = {'delta_inp_path':delta_inp_path,
-             'RELHUM_or_QV_delta':RELHUM_or_QV_delta}
+    fargs = {'delta_inp_path':delta_inp_path}
     step_args = []
 
     for laf_dt in laf_dts:
