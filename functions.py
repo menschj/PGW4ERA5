@@ -1,33 +1,47 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
-description     Auxiliary functions for Postprocess_CLM
-author		Christoph Heim based on developments by Roman Brogli
+description     Auxiliary functions for PGW for ERA5
+author		Christoph Heim based on original developments by Roman Brogli
 date created    12.01.2022
 """
 ##############################################################################
 import os
 import xarray as xr
 import numpy as np
-import matplotlib.pyplot as plt
-from numba import njit, jit
+from numba import njit
 from datetime import datetime,timedelta
-from dateutil.relativedelta import relativedelta
-from package.utilities import dt64_to_dt
 from constants import CON_RD, CON_G
-from scipy.interpolate import interp1d
 ##############################################################################
 
-def hour_of_year(dt): 
-    beginning_of_year = datetime(dt.year, 1, 1, tzinfo=dt.tzinfo)
-    return(int((dt - beginning_of_year).total_seconds() // 3600))
 
+##############################################################################
+##### ARBITRARY FUNCTIONS
+##############################################################################
+def dt64_to_dt(date):
+    """
+    Converts a numpy datetime64 object to a python datetime object 
+    Input:
+      date - a np.datetime64 object
+    Output:
+      DATE - a python datetime object
+    source: https://gist.github.com/blaylockbk/1677b446bc741ee2db3e943ab7e4cabd
+    """
+    timestamp = ((date - np.datetime64('1970-01-01T00:00:00'))
+                 / np.timedelta64(1, 's'))
+    return datetime.utcfromtimestamp(timestamp)
+
+
+##############################################################################
+##### PHYSICAL COMPUTATIONS
+##############################################################################
 def specific_to_relative_humidity(QV, P, T):
     """
     Compute relative humidity from specific humidity.
     """
     RH = 0.263 * P * QV *(np.exp(17.67*(T - 273.15)/(T-29.65)))**(-1)
     return(RH)
+
 
 def relative_to_specific_humidity(RH, P, T):
     """
@@ -37,69 +51,141 @@ def relative_to_specific_humidity(RH, P, T):
     return(QV)
 
 
-def load_delta(delta_inp_path, var_name, delta_date_time, 
-                laf_time, diff_time_step,
-                name_base='{}_delta.nc'):
+def integ_geopot(P_hl, FIS, T, QV, level1, p_ref):
+    """
+    Integrate ERA5 geopotential from surfce to a reference pressure
+    level p_ref.
+    """
+    # take log half-level pressure difference (located at full levels)
+    dlnP = np.log(P_hl).diff(
+                dim='level1', label='lower').rename({'level1':'level'})
 
-    delta_year = xr.open_dataset(os.path.join(delta_inp_path,
+    # create geopotential array and fill with surface geopotential
+    PHI_hl = FIS.expand_dims(dim={'level1':level1}).copy()
+
+    # compute virtual temperature
+    TV = T * (1 + 0.61 * QV)
+
+    ## integrate over model half levels
+    for l in sorted(TV.level.values, reverse=True):
+        # geopotential at full level
+        PHI_hl.loc[dict(level1=l)] = (
+                PHI_hl.sel(level1=l+1) +
+                (CON_RD * TV.sel(level=l) * dlnP.sel(level=l))
+        )
+
+            
+    PHI_hl = PHI_hl.transpose('time', 'level1', 'lat', 'lon')
+
+    ## integrate from last half-level below reference pressure
+    ## up to reference pressure
+    # determine level below reference pressure
+    p_diff = P_hl - p_ref
+    p_diff = p_diff.where(p_diff >= 0, np.nan)
+    ind_ref_star = p_diff.argmin(dim='level1')
+    hl_ref_star = p_diff.level1.isel(level1=ind_ref_star)
+    # get pressure and geopotential of that level
+    p_ref_star = P_hl.sel(level1=hl_ref_star)
+    phi_ref_star = PHI_hl.sel(level1=hl_ref_star)
+
+    # finally interpolate geopotential to reference
+    # pressure level
+    phi_ref = (
+            phi_ref_star -
+            (CON_RD * TV.sel(level=hl_ref_star-1)) * 
+            (np.log(p_ref) - np.log(p_ref_star))
+    )
+
+    # remove multi-dimensional coordinates
+    if 'level1' in phi_ref.coords:
+        del phi_ref['level1']
+    if 'level' in phi_ref.coords:
+        del phi_ref['level']
+    if 'plev' in phi_ref.coords:
+        del phi_ref['level']
+
+    return(phi_ref)
+
+
+##############################################################################
+##### CLIMATE DELTA COMPUTATION AND INTERPOLATION
+##############################################################################
+def load_delta(delta_inp_path, var_name, era_date_time, 
+               delta_date_time=None, name_base='{}_delta.nc'):
+    """
+    Load a climate delta and if delta_date_time is given,
+    interpolate it to that date and time of the year.
+    """
+    ## full climate delta (either daily or monthly)
+    full_delta = xr.open_dataset(os.path.join(delta_inp_path,
                             name_base.format(var_name)))
+
+    ## if climate delta should be interpolated to a specific time
     if delta_date_time is not None:
         # replace delta year values with year of current delta_date_time
-        for i in range(len(delta_year.time)):
-            delta_year.time.values[i] = dt64_to_dt(
-                        delta_year.time[i]).replace(year=delta_date_time.year)
+        for i in range(len(full_delta.time)):
+            full_delta.time.values[i] = dt64_to_dt(
+                        full_delta.time[i]).replace(
+                                year=delta_date_time.year)
         # interpolate in time and select variable
-        delta = delta_year[var_name].interp(time=delta_date_time, 
+        delta = full_delta[var_name].interp(time=delta_date_time, 
                                     method='linear', 
                                 ).expand_dims(dim='time', axis=0)
+
         # make sure time is in the same format as in laf file
-        delta['time'] = laf_time
+        # Era has "seconds since xyz" while delta has np.datetime64
+        delta['time'] = era_date_time
+
+    ## if full climate delta should be returned without 
+    ## time interpolation
     else:
-        delta = delta_year[var_name]
+        delta = full_delta[var_name]
 
     return(delta)
 
 
-def get_delta_era5(var, var_name, laffile, delta_inp_path,
-                    diff_time_step, date_time=None):
-    delta = load_delta(delta_inp_path, var_name, date_time, laffile.time,
-                        diff_time_step)
-    #delta = delta.assign_coords({'lat':var.lat.values})
-    return(delta)
+def load_delta_interp(delta_inp_path, var_name, target_P,
+                        era_date_time, delta_date_time):
+    """
+    Does the following:
+        - load a climate delta
+        - for specific variables (ta and hur) also load surface value
+          as well as historical surface pressure. This is to extend
+          the 3D climate deltas with surface values which makes
+          the interpolation to the ERA5 model levels more precise.
+        - vertically interpolate climate deltas to ERA5 model levels
+    """
+    delta = load_delta(delta_inp_path, var_name, era_date_time, delta_date_time)
 
-
-def get_delta_interp_era5(var, target_P, var_name, laffile, delta_inp_path,
-                        diff_time_step, date_time):
-    delta = load_delta(delta_inp_path, var_name, date_time, laffile.time,
-                        diff_time_step)
-    #delta = delta.assign_coords({'lat':var.lat.values})
-
+    ## for specific variables also load climate delta for surface
+    ## values and the historical surface pressure.
     if var_name in ['ta','hur']:
         sfc_var_name = var_name + 's'
         delta_sfc = load_delta(delta_inp_path, sfc_var_name, 
-                            date_time, laffile.time,
-                            diff_time_step)
-        #delta_sfc = delta_sfc.assign_coords({'lat':var.lat.values})
+                            era_date_time, delta_date_time)
         ps_hist = load_delta(delta_inp_path, 'ps', 
-                            date_time, laffile.time,
-                            diff_time_step,
+                            era_date_time, delta_date_time,
                             name_base='{}_historical.nc')
-        #ps_hist = ps_hist.assign_coords({'lat':var.lat.values})
     else:
         delta_sfc = None
         ps_hist = None
 
-    # interpolate delta onto ERA5 vertical grid
+    # interpolate climate delta onto ERA5 model levels
     delta = vert_interp_delta(delta, target_P, delta_sfc, ps_hist)
     return(delta)
 
 
 def replace_delta_sfc(source_P, ps_hist, delta, delta_sfc):
-    #ps_hist = 101300
-    #print(source_P)
-    #print(ps_hist)
-    #print(delta)
-    #print(delta_sfc)
+    """
+    In the 3D climate deltas, replace the value just below
+    the surface by the surface climate delta value and insert
+    it a historical surface pressure. This improves the precision
+    of the climate deltas during interpolation to the ERA5 model levels.
+    All 3D climate delta values below the historical surface pressure
+    are set to the surface value (constant extrapolation). This is
+    because within the orography the GCM climate delta is assumed
+    to be incorrect.
+    """
     out_source_P = source_P.copy()
     out_delta = delta.copy()
     if ps_hist > np.max(source_P):
@@ -110,28 +196,22 @@ def replace_delta_sfc(source_P, ps_hist, delta, delta_sfc):
         raise ValueError()
     else:
         sfc_ind = np.max(np.argwhere(ps_hist > source_P))
-        #print(sfc_ind)
         out_delta[sfc_ind:] = delta_sfc
         out_source_P[sfc_ind] = ps_hist
-
-    #print(out_source_P)
-    #print(out_delta)
-    #quit()
     return(out_source_P, out_delta)
 
 
-def vert_interp_delta(delta, target_P, delta_sfc, ps_hist):
-
-    ##print(delta)
-    #if delta.name in ['hus', 'QV']:
-    #    print('WARNING: DEBUG MODE FOR variable hus model top!!!')
-    #    top = xr.zeros_like(delta.sel(plev=100000))
-    #    top['plev'] = 500
-    #    delta = xr.concat([delta, top], dim='plev').transpose(
-    #                                'time', 'plev', 'lat', 'lon')
-    #    #print(delta.mean(dim=['lat','lon','time']))
-    #    #print(delta.plev)
-    #    #quit()
+def vert_interp_delta(delta, target_P, delta_sfc=None, ps_hist=None):
+    """
+    Vertically interpolate climate delta onto ERA5 model levels.
+    If delta_sfc and ps_hist are given, surface values will
+    be inserted into the 3D climate delta at the height of
+    the surface pressure. This gives a more precise interpolation.
+    Climate delta values below the surface are set to the surface
+    climate delta because below the surface, the GCM climate delta
+    is considered unreliable and thus constant extrapolation
+    seems more reasonable.
+    """
 
     # sort delta dataset from top to bottom (pressure ascending)
     delta = delta.reindex(plev=list(reversed(delta.plev)))
@@ -143,22 +223,12 @@ def vert_interp_delta(delta, target_P, delta_sfc, ps_hist):
                          'time':delta.time}).transpose(
                                     'time', 'plev', 'lat', 'lon')
 
-    #lon_ind = 22
-    #lat_ind = 50
-    #print(source_P.isel(lon=lon_ind, lat=lat_ind).values)
-    #print(target_P.sel(level=np.max(target_P.level)).isel(lon=lon_ind, lat=lat_ind).values)
-    #print(delta.isel(lon=lon_ind, lat=lat_ind).values)
-    ##print(ps_hist.isel(lon=lon_ind, lat=lat_ind).values)
-    #print(delta_sfc.isel(lon=lon_ind, lat=lat_ind).values)
-
-
     ## if surface values are given, replace them at the
     ## level of the surface pressure
     if delta_sfc is not None:
         source_P, delta = xr.apply_ufunc(
                 replace_delta_sfc, source_P, 
                 ps_hist, 
-                #target_P.sel(level=np.max(target_P.level)), 
                 delta, delta_sfc,
                 input_core_dims=[['plev'],[],['plev'],[]],
                 output_core_dims=[['plev'],['plev']],
@@ -166,11 +236,7 @@ def vert_interp_delta(delta, target_P, delta_sfc, ps_hist):
         source_P = source_P.transpose('time', 'plev', 'lat', 'lon')
         delta = delta.transpose('time', 'plev', 'lat', 'lon')
 
-
-    #print(source_P.isel(lon=lon_ind, lat=lat_ind).values)
-    #print(delta.isel(lon=lon_ind, lat=lat_ind).values)
-    #quit()
-
+    # make sure all arrays contain the required dimensions
     if source_P.dims != ('time', 'plev', 'lat', 'lon'):
         raise ValueError()
     if delta.dims != ('time', 'plev', 'lat', 'lon'):
@@ -178,22 +244,21 @@ def vert_interp_delta(delta, target_P, delta_sfc, ps_hist):
     if target_P.dims != ('time', 'level', 'lat', 'lon'):
         raise ValueError()
 
+    # make sure there is no extrapolation at the model top
     if np.min(target_P) < np.min(source_P):
         raise ValueError('ERA5 top pressure is lower than '+
                          'climate delta top pressure!')
 
-    delta_interp = interp_nonfixed(delta, source_P, target_P,
-                        'plev', 'level',
+    # run interpolation
+    delta_interp = interp_logp_3d(delta, source_P, target_P,
                         extrapolate='constant')
     return(delta_interp)
 
 
-
-
-def interp_nonfixed(var, source_P, targ_P,
-                    inp_vdim_name, out_vdim_name,
-                    extrapolate='off'):
+def interp_logp_3d(var, source_P, targ_P, extrapolate='off'):
     """
+    Interpolate 3D array in vertical (pressure) dimension using the
+    logarithm of pressure.
     extrapolate:
         - off: no extrapolation
         - linear: linear extrapolation
@@ -204,13 +269,11 @@ def interp_nonfixed(var, source_P, targ_P,
 
     targ = xr.zeros_like(targ_P)
     tmp = np.zeros_like(targ.values.squeeze())
-    #interp_vprof(var.values.squeeze(), source_P.values.squeeze(),
-    #                    targ_P.squeeze().values, 
-    interp_vprof(var.values.squeeze(), np.log(source_P.values.squeeze()),
-                        np.log(targ_P.squeeze()).values, 
-                        tmp,
-                        len(var.lat), len(var.lon),
-                        extrapolate)
+    interp_1d_for_latlon(var.values.squeeze(),
+                np.log(source_P.values.squeeze()),
+                np.log(targ_P.squeeze()).values, 
+                tmp,
+                len(var.lat), len(var.lon), extrapolate)
     tmp = np.expand_dims(tmp, axis=0)
     targ.values = tmp
     return(targ)
@@ -218,7 +281,41 @@ def interp_nonfixed(var, source_P, targ_P,
 
 
 @njit()
+def interp_1d_for_latlon(orig_array, src_p, targ_p, interp_array,
+                nlat, nlon, extrapolate):
+    """
+    Vertical interpolation helper function with numba njit for 
+    fast performance.
+    Loop over lat and lon dimensions and interpolate each column
+    individually
+    extrapolate:
+        - off: no extrapolation
+        - linear: linear extrapolation
+        - constant: constant extrapolation
+    """
+    for lat_ind in range(nlat):
+        for lon_ind in range(nlon):
+            #print('lat {} lon {}'.format(lat_ind, lon_ind))
+            src_val_col = orig_array[:, lat_ind, lon_ind]
+            src_p_col = src_p[:, lat_ind, lon_ind]
+            targ_p_col = targ_p[:, lat_ind, lon_ind]
+
+            # call 1D interpolation function for current column
+            interp_col = interp_extrap_1d(src_p_col, src_val_col, 
+                                        targ_p_col, extrapolate)
+            interp_array[:, lat_ind, lon_ind] = interp_col
+
+
+@njit()
 def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
+    """
+    Numba helper function for interpolation of 1d vertical column.
+    Does constant extrapolation which is used for the climate deltas.
+    extrapolate:
+        - off: no extrapolation
+        - linear: linear extrapolation
+        - constant: constant extrapolation
+    """
     targ_y = np.zeros(len(targ_x))
     for ti in range(len(targ_x)):
         i1 = -1
@@ -261,9 +358,11 @@ def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
                 i2 = len(src_x) - 1
             require_extrap = True
 
+        # raise value if extrapolation is required but not enabled.
         if require_extrap and extrapolate == 'off':
             raise ValueError('Extrapolation deactivated but data out of bounds.')
 
+        # interpolate/extrapolate values
         if i1 == i2:
             targ_y[ti] = src_y[i1]
         else:
@@ -275,134 +374,18 @@ def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
     return(targ_y)
 
 
-@njit()
-def interp_vprof(orig_array, src_p,
-                targ_p, interp_array,
-                nlat, nlon,
-                extrapolate):
+def determine_p_ref(ps_era, ps_pgw, p_ref_opts, p_ref_last=None):
     """
-    Helper function for compute_VARNORMI. Speedup of ~100 time
-    compared to pure python code!
+    Find lowest GCM pressure level among p_ref_opts that lies above 
+    surface (surface pressure) in both ERA and PGW climate.
+    Also ensure that during the iterations, no reference pressure level 
+    at lower altitude than during last iterations is used. This is to
+    prevent the iteration algorithm to oscillate between two reference
+    pressure levels and not converge.
     """
-    for lat_ind in range(nlat):
-        for lon_ind in range(nlon):
-            #print('lat {} lon {}'.format(lat_ind, lon_ind))
-            src_val_col = orig_array[:, lat_ind, lon_ind]
-            src_p_col = src_p[:, lat_ind, lon_ind]
-            targ_p_col = targ_p[:, lat_ind, lon_ind]
-            #print(targ_p_col.shape)
-            ## np.interp does not work for extrapolation 
-            #interp_col = np.interp(targ_p_col, src_p_col, src_val_col)
-            ## scipty with extrapolation but slow
-            #f = interp1d(src_p_col, src_val_col, fill_value='extrapolate')
-            #interp_col = f(targ_p_col)
-            ## faster implementation with numba
-
-            #print(src_p_col)
-            #print(src_val_col)
-            #print(targ_p_col)
-            interp_col = interp_extrap_1d(src_p_col, src_val_col, 
-                                        targ_p_col, extrapolate)
-            #print(interp_col)
-            #quit()
-            if np.any(np.isnan(interp_col)):
-                #raise ValueError('Interpolated data contains NaN either due to '+
-                #                'extrapolation turned off but data out of bounds, ' +
-                #                'or because NaN are inherent to data!')
-                raise ValueError('Interpolated data contains NaN!')
-            interp_array[:, lat_ind, lon_ind] = interp_col
-    #return(interp_array)
-
-
-def interp(var, P, targ_p, inp_vdim_name):
-    targ = xr.zeros_like(var).isel({inp_vdim_name:range(len(targ_p))})
-    tmp = np.zeros_like(targ.values.squeeze())
-    interp_vprof(var.values.squeeze(), np.log(P.values.squeeze()),
-                        np.log(np.expand_dims(targ_p, axis=(1,2))), 
-                        tmp,
-                        len(var.lat), len(var.lon))
-    tmp = np.expand_dims(tmp, axis=0)
-    targ.values = tmp
-    targ = targ.rename({inp_vdim_name:'plev'})
-    targ = targ.assign_coords(plev=targ_p)
-    return(targ)
-
-
-def determine_p_ref(p_era, p_pgw, p_ref_last, p_ref_opts):
     for p in p_ref_opts:
-        if (p_era > p) & (p_pgw > p):
-        #if x / p > 1.01:
+        if (ps_era > p) & (ps_pgw > p):
             if p_ref_last is None:
                 return(p)
             else:
                 return(min(p, p_ref_last))
-
-
-def integ_geopot(P_hl, FIS, T, QV, level1, p_ref):
-    """
-    """
-    # take log half-level pressure difference (located at full levels)
-    dlnP = np.log(P_hl).diff(
-                dim='level1', label='lower').rename({'level1':'level'})
-
-    # create geopotential array and fill with surface geopotential
-    PHI_hl = FIS.expand_dims(dim={'level1':level1}).copy()
-    #PHI = laffile['FIS'].expand_dims(dim={'level':laffile.level}).copy()
-
-    # compute virtual temperature
-    TV = T * (1 + 0.61 * QV)
-
-    ## integrate over model half levels
-    for l in sorted(TV.level.values, reverse=True):
-        #print(l)
-        # geopotential at full level
-        PHI_hl.loc[dict(level1=l)] = (
-                PHI_hl.sel(level1=l+1) +
-                (CON_RD * TV.sel(level=l) * dlnP.sel(level=l))
-        )
-        #print('{}   {}'.format(l, PHI_hl.loc[dict(level1=l)].mean().values/CON_G))
-
-        ## geopotential at full level
-        #alpha = 1. - (
-        #        (laffile['P_hl'].sel(level1=l) / 
-        #        (laffile['P_hl'].sel(level1=l+1) - laffile['P_hl'].sel(level1=l))) * 
-        #        dlnP.sel(level=l)
-        #)
-        #PHI.loc[dict(level=l)] = (
-        #        PHI_hl.sel(level1=l+1) +
-        #        (CON_RD * TV.sel(level=l) * alpha)
-        #)
-
-            
-    #PHI = PHI.transpose('time', 'level', 'lat', 'lon')
-    PHI_hl = PHI_hl.transpose('time', 'level1', 'lat', 'lon')
-
-    ## integrate from last half-level below reference pressure
-    ## up to reference pressure
-    p_diff = P_hl - p_ref
-    p_diff = p_diff.where(p_diff >= 0, np.nan)
-    ind_ref_star = p_diff.argmin(dim='level1')
-    hl_ref_star = p_diff.level1.isel(level1=ind_ref_star)
-    #hl_ref_star.to_netcdf('test.nc')
-    #quit()
-    p_ref_star = P_hl.sel(level1=hl_ref_star)
-    phi_ref_star = PHI_hl.sel(level1=hl_ref_star)
-
-    phi_ref = (
-            phi_ref_star -
-            (CON_RD * TV.sel(level=hl_ref_star-1)) * 
-            (np.log(p_ref) - np.log(p_ref_star))
-    )
-    if 'level1' in phi_ref.coords:
-        del phi_ref['level1']
-    if 'level' in phi_ref.coords:
-        del phi_ref['level']
-    if 'plev' in phi_ref.coords:
-        del phi_ref['level']
-    #print(phi_ref)
-    #quit()
-    #del phi_ref['level1']
-    #del phi_ref['level']
-
-    return(PHI_hl, phi_ref)
-
