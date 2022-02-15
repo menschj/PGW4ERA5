@@ -13,17 +13,22 @@ gcm_name=MPI-ESM1-2-HR
 
 table_ID=Amon
 table_ID=Emon
+table_ID=day
+
+cdo_agg_command=ymonmean
+cdo_agg_command=ydaymean
 
 model=MPI-ESM1-2-HR
 experiments=(historical ssp585)
-i_extract_vars=0
+i_extract_vars=1
 i_convert_hus_to_hur=0
 i_compute_delta=1
 
 # Amon
 var_names=(tas hurs ps ua va ta hur zg)
-## Emon
-var_names=(ua va ta hus zg)
+var_names=(tas)
+### Emon
+#var_names=(ua va ta hus zg)
 #var_names=(hus)
 ## compute delta separately
 #var_names=(hur)
@@ -54,7 +59,7 @@ for var_name in ${var_names[@]}; do
 
             ## compute historical climatology
             if [[ "$experiment" == "historical" ]]; then
-                cdo ymonmean \
+                cdo $cdo_agg_command \
                     -sellonlatbox,$box \
                     -cat \
                     $inp_dir/${var_name}_${file_name_base}_198[5-9]*.nc \
@@ -65,7 +70,7 @@ for var_name in ${var_names[@]}; do
 
             ## compute future experiment (here ssp585) climatology
             elif [[ "$experiment" == "ssp585" ]]; then
-                cdo ymonmean \
+                cdo $cdo_agg_command \
                     -sellonlatbox,$box \
                     -cat \
                     $inp_dir/${var_name}_${file_name_base}_20[7-9]*.nc \
