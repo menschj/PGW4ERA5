@@ -6,15 +6,11 @@ author		Christoph Heim based on original developments by Roman Brogli
 date created    12.01.2022
 """
 ##############################################################################
+import argparse, os
 import xarray as xr
-import sys, argparse
+import numpy as np
 from pathlib import Path
 from datetime import datetime, timedelta
-from dateutil.relativedelta import relativedelta
-import matplotlib.pyplot as plt
-import numpy as np
-import os
-from scipy.interpolate import RegularGridInterpolator
 from base.functions import (
         specific_to_relative_humidity,
         relative_to_specific_humidity,
@@ -25,7 +21,7 @@ from base.functions import (
         determine_p_ref,
         )
 from constants import CON_G, CON_RD
-from package.mp import IterMP
+from parallel import IterMP
 from settings import *
 ##############################################################################
 
@@ -45,31 +41,22 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         - hus (computed using a hur and hurs climate delta)
         - surface and soil temperature
     and consequently iteratively updates ps to maintain hydrostatic
-    balance. During this, the climate delta for zg is required
-    in addition. 
+    balance. During this, the climate delta for zg is additionally required.
 
     ##########################################################################
 
-    If the names in the ERA5 files to be processed deviate from
-    the usual naming convention, the 'var_name_map' allows to
-    map the usual names to the names in the ERA5 used here.
-
-    The script assumes the following names for the coordinates:
-        - time:     time
-        - level:    full levels
-        - level1:   half levels
-        - lat:      latitude
-        - lon:      longitude
-        - soil1:    soil half levels
-    For alternatively formatted ERA5 files with different 
-    coordinate names, the code will have to be adjusted.
+    If the variable names in the ERA5 files to be processed deviate from
+    the usual naming convention, the dict 'var_name_map' in the file 
+    settings.py allows to map the usual names to the names in the ERA5
+    used here. Also the coordinate names in the ERA5 or the GCM climate
+    delta files can be changed there, if required.
 
     ##########################################################################
 
     Some more information about the iterative surface pressure
     adjustment:
 
-    - As a default option, the climate deltas are interpolated on
+    - As a default option, the climate deltas are interpolated to
     the ERA5 model levels of the ERA climate state (i_reinterp = 0).
     There is an option implemented (i_reinterp = 1) in which the
     deltas are re-interpolated on the updated ERA5 model levels
@@ -78,22 +65,27 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     deltas have coarse vertical resolution. However, it also
     implies that the ERA5 fields are extrapolated at the surface
     (if the surface pressure increases) the effect of which was not
-    tested in detail.
+    tested in detail. The extrapolation is done assuming that the
+    boundary values are constant, which is not ideal for height-dependent
+    variables like e.g. temperature.
 
-    - The procedure requires a reference pressure level (e.g 500 hPa) where
-    the geopotential is computed. Based on the deviation between the computed
-    and the GCM reference pressure geopotential, the surface pressure is
-    adjusted. Since the climate deltas may not always be available at 
-    native vertical GCM resolution, this leads to an error from the coarse
-    resolution. The higher the reference pressure, the large this error may
-    get. To avoid this problem, the default option is that the reference
+    - The procedure requires a reference pressure level (e.g. 500 hPa) for
+    which the geopotential is computed. Based on the deviation between the
+    computed and the GCM reference pressure geopotential, the surface pressure
+    is adjusted. Since the climate deltas may not always be available at 
+    native vertical GCM resolution, but the climate delta for the geopotential
+    on one specific pressure level itself is computed by the GCM using data
+    from all GCM model levels below, this introduces an error in the surface
+    pressure adjustment used here.
+    The higher the reference pressure is chosen, the large this error may
+    get. To alleviate this problem, the default option is that the reference
     pressure is determined locally as the lowest possible pressure above
     the surface for which a climate delta for the geopotential is available.
     It is strongly recommended to use this option (p_ref = None).
 
-    - If the iteration does not converge 'thresh_phi_ref_max_error' in
+    - If the iteration does not converge, 'thresh_phi_ref_max_error' in
     the file settings.py may have to be raised a little bit. Setting
-    i_debug = 2 may help to diagnose what is happening.
+    i_debug = 2 may help to diagnose if this helps.
 
     ##########################################################################
 
@@ -123,7 +115,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     if i_debug >= 2:
         print('update {}'.format(var_name))
     delta_tas = load_delta(delta_input_dir, var_name,
-                            laffile.time, era_step_dt)
+                            laffile[TIME_ERA], era_step_dt)
     laffile[var_name_map[var_name]].values += delta_tas.values
 
     # update temperature of soil layers
@@ -133,8 +125,8 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     # set climatological lower soil temperature delta to annual mean
     # climate delta of near-surface temperature.
     delta_st_clim = load_delta(delta_input_dir, 'tas',
-                            laffile.time, 
-                            delta_date_time=None).mean(dim=['time'])
+                            laffile[TIME_ERA], 
+                            delta_date_time=None).mean(dim=[TIME_GCM])
     delta_st = (
             delta_st_clim + np.exp(-laffile.soil1/2.8) * 
                     (delta_tas - delta_st_clim)
@@ -161,7 +153,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
             ## interpolate climate deltas to ERA5 model levels
             ## use ERA climate state
             delta_var = load_delta_interp(delta_input_dir,
-                    var_name, pa_era, laffile.time, era_step_dt)
+                    var_name, pa_era, laffile[TIME_ERA], era_step_dt)
             deltas[var_name] = delta_var
 
             ## compute PGW climate state variables
@@ -213,7 +205,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                                 pa_era, pa_pgw, extrapolate='constant')
                 deltas[var_name] = load_delta_interp(delta_input_dir,
                                                 var_name, pa_pgw,
-                                                laffile.time, era_step_dt)
+                                                laffile[TIME_ERA], era_step_dt)
                 vars_pgw[var_name] = vars_era[var_name] + deltas[var_name]
 
             # convert relative humidity to speicifc humidity in pgw
@@ -225,10 +217,12 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         if p_ref_inp is None:
             # get GCM pressure levels as candidates for reference pressure
             p_ref_opts = load_delta(delta_input_dir, 'zg',
-                                laffile.time, era_step_dt).plev
+                                laffile[TIME_ERA], era_step_dt).plev
             # surface pressure in ERA and PGW climate states
-            p_sfc_era = pa_hl_era.sel(level1=np.max(pa_hl_era.level1))
-            p_sfc_pgw = pa_hl_pgw.sel(level1=np.max(pa_hl_pgw.level1))
+            p_sfc_era = pa_hl_era.sel(
+                        {VERT_HL_ERA:np.max(pa_hl_era[VERT_HL_ERA])})
+            p_sfc_pgw = pa_hl_pgw.sel(
+                        {VERT_HL_ERA:np.max(pa_hl_pgw[VERT_HL_ERA])})
             # reference pressure from a former iteration already set?
             try:
                 p_ref_last = p_ref
@@ -239,8 +233,8 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                     p_ref_opts, p_ref_last,
                     input_core_dims=[[],[],['plev'],[]],
                     vectorize=True)
-            if 'level1' in p_ref.coords:
-                del p_ref['level1']
+            if VERT_HL_ERA in p_ref.coords:
+                del p_ref[VERT_HL_ERA]
         else:
             p_ref = p_ref_inp
 
@@ -252,15 +246,13 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         phi_ref_era = integ_geopot(pa_hl_era, laffile.FIS,
                                     laffile[var_name_map['ta']], 
                                     laffile[var_name_map['hus']], 
-                                    laffile.level1, p_ref)
+                                    laffile[VERT_HL_ERA], p_ref)
 
         delta_phi_ref = phi_ref_pgw - phi_ref_era
 
         ## load climate delta for reference pressure level
         climate_delta_phi_ref = load_delta(delta_input_dir, 'zg',
-                            laffile.time, era_step_dt) * CON_G
-        climate_delta_phi_ref = climate_delta_phi_ref.assign_coords(
-                                    lat=laffile.lat.values)
+                            laffile[TIME_ERA], era_step_dt) * CON_G
         climate_delta_phi_ref = climate_delta_phi_ref.sel(plev=p_ref)
         del climate_delta_phi_ref['plev']
 
@@ -285,11 +277,11 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                   'for file {}.'.format(inp_era_file_path))
 
 
-    ## TODO DEBUG TESTING
-    dps = ps_pgw-laffile.PS 
-    dps.to_netcdf(os.path.join(Path(out_era_file_path).parents[0], 
-            'delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref_inp, era_step_dt)))
-    ## TODO DEBUG TESTING
+    ### TODO DEBUG TESTING
+    #dps = ps_pgw-laffile.PS 
+    #dps.to_netcdf(os.path.join(Path(out_era_file_path).parents[0], 
+    #        'delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref_inp, era_step_dt)))
+    ### TODO DEBUG TESTING
 
     ## If re-interpolation is enabled, interpolate climate deltas for
     ## ua and va onto final PGW climate state ERA5 model levels.
@@ -301,7 +293,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                             pa_era, pa_pgw, extrapolate='constant')
             dvar = load_delta_interp(delta_input_dir,
                     var_name, pa_pgw,
-                    laffile.time, era_step_dt)
+                    laffile[TIME_ERA], era_step_dt)
             vars_pgw[var_name] = var_era + dvar
 
 
