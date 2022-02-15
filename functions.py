@@ -13,6 +13,9 @@ from numba import njit
 from datetime import datetime,timedelta
 from constants import CON_RD, CON_G
 from settings import *
+
+# TODO DEBUG
+from matplotlib import pyplot as plt
 ##############################################################################
 
 
@@ -129,6 +132,19 @@ def load_delta(delta_inp_path, var_name, era_date_time,
             full_delta.time.values[i] = dt64_to_dt(
                         full_delta.time[i]).replace(
                                 year=delta_date_time.year)
+
+        # add periodicity at the start and the end of the
+        # annual cycle
+        last_year = full_delta.isel(time=-1)
+        last_year.time.values = dt64_to_dt(
+                    last_year.time).replace(
+                            year=delta_date_time.year-1)
+        next_year = full_delta.isel(time=0)
+        next_year.time.values = dt64_to_dt(
+                    next_year.time).replace(
+                            year=delta_date_time.year+1)
+        full_delta = xr.concat([last_year, full_delta, next_year], dim='time')
+
         # interpolate in time and select variable
         delta = full_delta[var_name].interp(time=delta_date_time, 
                                     method='linear', 

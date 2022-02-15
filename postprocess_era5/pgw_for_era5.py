@@ -34,7 +34,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     The terminology used is the "ERA climate state" referring to
     the climate state in the ERA5 files, as well as the "PGW 
     climate state" referring to the future (or past) climate state.
-    The script adds climate deltas for:
+    The script adds (and requires) climate deltas for:
         - ua
         - va
         - ta (using tas)
@@ -42,6 +42,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         - surface and soil temperature
     and consequently iteratively updates ps to maintain hydrostatic
     balance. During this, the climate delta for zg is additionally required.
+    Finally, the GCM ps from the historical simulation is also needed.
 
     ##########################################################################
 
@@ -168,7 +169,6 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
             if var_name == 'hur':
                 vars_pgw['hus'] = relative_to_specific_humidity(
                                 vars_pgw['hur'], pa_era, vars_pgw['ta'])
-        #quit()
 
 
     #########################################################################
@@ -340,6 +340,10 @@ if __name__ == "__main__":
     # climate delta directory (already remapped to ERA5 grid)
     parser.add_argument('-d', '--delta_input_dir', type=str)
 
+    # ERA5 file name base
+    parser.add_argument('-b', '--file_name_base', type=str, 
+                        default='cas{:%Y%m%d%H}0000.nc')
+
     # number of parallel jobs
     parser.add_argument('-p', '--n_par', type=int, default=1)
 
@@ -367,9 +371,9 @@ if __name__ == "__main__":
 
         # set output and input ERA5 file
         inp_era_file_path = os.path.join(args.input_dir, 
-                'cas{:%Y%m%d%H}0000.nc'.format(era_step_dt))
+                args.file_name_base.format(era_step_dt))
         out_era_file_path = os.path.join(args.output_dir, 
-                'cas{:%Y%m%d%H}0000.nc'.format(era_step_dt))
+                args.file_name_base.format(era_step_dt))
 
         step_args.append({
             'inp_era_file_path':inp_era_file_path,
