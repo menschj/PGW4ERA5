@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 description     Auxiliary functions for PGW for ERA5
-author		Christoph Heim based on original developments by Roman Brogli
-date created    12.01.2022
+authors		    Before 2022: original developments by Roman Brogli
+                Since 2022:  updates by Christoph Heim 
 """
 ##############################################################################
-import os
+import os, math
 import xarray as xr
 import numpy as np
 from numba import njit
@@ -14,8 +14,8 @@ from datetime import datetime,timedelta
 from constants import CON_RD, CON_G
 from settings import *
 
-# TODO DEBUG
-from matplotlib import pyplot as plt
+## TODO DEBUG
+#from matplotlib import pyplot as plt
 ##############################################################################
 
 
@@ -116,7 +116,7 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
 ##### CLIMATE DELTA COMPUTATION AND INTERPOLATION
 ##############################################################################
 def load_delta(delta_inp_path, var_name, era_date_time, 
-               delta_date_time=None, name_base='{}_delta.nc'):
+               delta_date_time=None, name_base=climate_delta_file_names):
     """
     Load a climate delta and if delta_date_time is given,
     interpolate it to that date and time of the year.
@@ -162,6 +162,27 @@ def load_delta(delta_inp_path, var_name, era_date_time,
     return(delta)
 
 
+### TODO DEBUG START
+#def load_delta_old(delta_inp_path, var_name, era_date_time, 
+#               delta_date_time=None, name_base='{}_delta.nc'):
+#    """
+#    Load a climate delta and if delta_date_time is given,
+#    interpolate it to that date and time of the year.
+#    """
+#
+#    def hour_of_year(dt): 
+#        beginning_of_year = datetime(dt.year, 1, 1, tzinfo=dt.tzinfo)
+#        return(int((dt - beginning_of_year).total_seconds() // 3600))
+#    name_base = name_base.split('.nc')[0] + '_{:05d}.nc'
+#    diff_time_step = int(hour_of_year(delta_date_time)/3)
+#    delta = xr.open_dataset(os.path.join(delta_inp_path,
+#            name_base.format(var_name, diff_time_step)))[var_name]
+#    # make sure time is in the same format as in laf file
+#    delta['time'] = era_date_time
+#
+#    return(delta)
+### TODO DEBUG STOP
+
 def load_delta_interp(delta_inp_path, var_name, target_P,
                         era_date_time, delta_date_time):
     """
@@ -183,7 +204,7 @@ def load_delta_interp(delta_inp_path, var_name, target_P,
                             era_date_time, delta_date_time)
         ps_hist = load_delta(delta_inp_path, 'ps', 
                             era_date_time, delta_date_time,
-                            name_base='{}_historical.nc')
+                            name_base=era_climate_file_names)
     else:
         delta_sfc = None
         ps_hist = None
@@ -407,3 +428,141 @@ def determine_p_ref(ps_era, ps_pgw, p_ref_opts, p_ref_last=None):
                 return(p)
             else:
                 return(min(p, p_ref_last))
+
+
+
+
+##############################################################################
+##### SMOOTHING OF ANNUAL CYCLE FOR DAILY CLIMATE DELTAS
+##############################################################################
+def filter_data(annualcycleraw, variablename_to_smooth, outputpath):
+
+	"""
+	This function performs a temporal smoothing of an annual timeseries 
+    (typically daily resolution) using a spectral filter 
+    (Bosshard et al. 2011).
+
+	Input:
+		Input 1: Path to a netcdf file of the annual cycle to be smoothed. 
+        Normally this is the change in a specific variable between 
+        two simulations (e.g. warming). 
+        Can be 4 or 3 dimensional, where the time is one dimension 
+        and the others are space dimensions.
+		Input 2: The name of the variable within the given netcdf file
+		Input 3: Path to the output file
+		
+	Output:
+		A netcdf file containing the smoothed annual cycle. 
+	"""	
+
+	Diff = xr.open_dataset(annualcycleraw)[variablename_to_smooth].squeeze()
+	coords = Diff.coords
+
+	print('Dimension that is assumed to be time dimension is called: ', 
+            Diff.dims[0])
+	print('shape of data: ', Diff.shape)
+
+	Diff = Diff.data
+
+	#create an array to store the smoothed timeseries
+	#Diff_smooth=np.zeros_like(Diff, dtype=np.float32) 
+
+	if len(Diff.shape) == 4:
+		times = Diff.shape[0] 
+		levels = Diff.shape[1]
+		ygrids = Diff.shape[2]
+		xgrids = Diff.shape[3]
+	elif len(Diff.shape) == 3:
+		times = Diff.shape[0]
+		ygrids = Diff.shape[1]
+		xgrids = Diff.shape[2]
+		levels = 0
+	else:
+		sys.exit('Wrog dimensions of input file should be 3 or 4-D')
+
+
+	if len(Diff.shape) == 4:
+        #loop over levels to smooth the timeseries on every level
+		for i in range(levels):
+			for yy in range(ygrids):
+				for xx in range(xgrids):	
+                    #reconstruct the smoothed timeseries using function below
+					Diff[:,i,yy,xx] = harmonic_ac_analysis(Diff[:,i,yy,xx]) 
+
+
+
+	if len(Diff.shape) == 3:		
+		for yy in range(ygrids):
+			for xx in range(xgrids):	
+            #dump the smoothed timeseries in the array on the original level
+				Diff[:,yy,xx] = harmonic_ac_analysis(Diff[:,yy,xx]) 
+			
+
+	print('Done with smoothing')
+
+	#del Diff
+
+	Diff = xr.DataArray(Diff, coords=coords, name=variablename_to_smooth)
+	Diff.to_netcdf(outputpath, mode='w')
+
+
+def harmonic_ac_analysis(ts):
+	"""
+	Estimation of the harmonics according to formula 12.19 -
+	12.23 on p. 264 in Storch & Zwiers
+
+	Is incomplete since it is only for use in surrogate smoothing 
+    --> only the part of the formulas that is needed there
+
+	Arguments:
+		ts: a 1-d numpy array of a timeseries
+
+	Returns:
+		hcts: a reconstructed smoothed timeseries 
+                (the more modes are summed the less smoothing)
+		mean: the mean of the timeseries (needed for reconstruction)
+	"""
+	
+	if np.any(np.isnan(ts) == True): #if there are nans, return nans
+		smooths = np.full_like(ts, np.nan) #sys.exit('There are nan values')
+		return smooths
+	else:
+        #calculate the mean of the timeseries (used for reconstruction)
+		mean = ts.mean() 
+	
+		lt = len(ts) #how long is the timeseries?
+		P = lt
+
+		#initialize the output array. 
+        #we will use at max 4 modes for reconstruction 
+        #(for peformance reasons, it can be increased)
+		hcts = np.zeros((4,lt))
+
+		timevector=np.arange(1,lt+1,1)	#timesteps used in calculation	
+
+        #a measure that is to check that the performed calculation 
+        # is justified.
+		q = math.floor(P/2.) 
+	
+        #create the reconstruction timeseries, mode by mode 
+        #(starting at 1 until 5, if one wants more smoothing 
+        #this number can be increased.)
+		for i in range(1,4): 
+			if i < q: #only if this is true the calculation is valid
+			
+				#these are the formulas from Storch & Zwiers
+				bracket = 2.*math.pi*i/P*timevector
+				a = 2./lt*(ts.dot(np.cos(bracket))) 
+                #dot product (Skalarprodukt) for scalar number output!
+				b = 2./lt*(ts.dot(np.sin(bracket))) 
+				
+                #calculate the reconstruction time series
+				hcts[i-1,:] = a * np.cos(bracket) + b * np.sin(bracket) 
+			
+			else: #abort if the above condition is not fulfilled. In this case more programming is needed.
+				sys.exit('Whooops that should not be the case for a yearly '+
+                'timeseries! i (reconstruction grade) is larger than '+
+                'the number of timeseries elements / 2.')
+
+		smooths = sum(hcts[0:3,:]) + mean
+		return smooths

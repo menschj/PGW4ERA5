@@ -1,3 +1,29 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+"""
+description     Settings namelist for all routines in PGW for ERA5
+authors		    Before 2022: original developments by Roman Brogli
+                After 2022:  updates by Christoph Heim 
+"""
+##############################################################################
+##############################################################################
+
+### GENERAL SETTINGS
+##############################################################################
+# File naming convention for climate deltas
+# ({} is placeholder for variable name).
+climate_delta_file_names = '{}_delta.nc'
+# File naming convention for ERA climatological files 
+# ({} is placeholder for variable name).
+# This is required exclusively for the surface pressure (ps).
+era_climate_file_names = '{}_historical.nc'
+
+### SMOOTHING AND INTERPOLATE
+##############################################################################
+
+
+### SURFACE PRESSURE ADJUSTMENT SETTINGS 
+##########################################################################
 # debug output level
 i_debug = 2 # [0-2]
 

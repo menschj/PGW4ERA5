@@ -1,150 +1,101 @@
-# -*- coding: utf-8 -*- 
-###############################################################################
-import subprocess, os, argparse
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+"""
+description     PGW for ERA5
+authors		    Before 2022: original developments by Roman Brogli
+                After 2022:  updates by Christoph Heim 
+"""
+##############################################################################
+import os, argparse
 import xarray as xr
-#import xesmf as xe
-from interpolate import interpannualcycle
-#from era5_vertical import vertinterpol
-from package.utilities import cd, cdo_remap
 from pathlib import Path
-###############################################################################
+from functions import filter_data
+from settings import *
+##############################################################################
 
 ## input arguments
 parser = argparse.ArgumentParser(description =
-                'Prepare PGW climate deltas for adding to BC files.')
-# variable to plot
+            'PGW for ERA5: Preprocess climate deltas before adding ' +
+            'them to ERA5. The main routine (pgw_for_era5.py) requires ' +
+            'climate deltas for [ta,hur,ua,va,zg,hurs,tas], as well '+
+            'as the ERA climatological value of ps.')
+
+# processing step to perform during script execution
+parser.add_argument('processing_step', type=str, 
+            choices=['smoothing','regridding'],
+            help='Possible processing steps are: ' +
+            'smoothing: [For daily climate deltas, a smoothing of ' +
+            'the annual cycle should be applied. For monthly ' +
+            'climate deltas this is not necessary.] ' +
+            'regridding: [If the climate deltas are not on the same ' +
+            'horizontal grid as ERA5, they can be regridded here. '+
+            'WARNING: The script assumes regular lat/lon grid for '+
+            'input (climate delta) and output (ERA5)!]')
+
+# variable(s) to process
 parser.add_argument('var_names', type=str,
-                    help='separate multiple with ","')
-# number of parallel processes
-parser.add_argument('-p', '--n_par', type=int, default=1)
-# number of BC files per day
-parser.add_argument('-n', '--n_per_day', type=int, default=8)
+            help='Variable names (e.g. tas) to process. Separate ' +
+            'multiple variable names with "," (e.g. tas,ta).')
+
+# input directory
+parser.add_argument('-i', '--input_directory', type=str,
+            help='Directory with input files for selected ' +
+            'processing step.')
+
+# output directory
+parser.add_argument('-o', '--output_directory', type=str,
+            help='Directory where output files of selected ' +
+            'processing step should be stored.')
+
+# target ERA5 example file to take grid information
+parser.add_argument('-e', '--era5_file_path', type=str, default=None,
+            help='Path to example ERA5 file ' +
+            'from which to take grid information for regridding.')
+
 args = parser.parse_args()
 print(args)
 
-performsmooth   = 1
-regridhorinew   = 0
+# make sure required input arguments are set.
+if args.input_directory is None:
+    raise ValueError('Input directory (-i) is required.')
+if args.output_directory is None:
+    raise ValueError('Output directory (-o) is required.')
+if (args.processing_step == 'regridding') and (args.era5_file_path is None):
+    raise ValueError('era5_file_path is required for regridding step.')
 
-# number of output time steps in total
-n_out_time_steps = 366 * args.n_per_day
+# create output directory
+Path(args.output_directory).mkdir(exist_ok=True, parents=True)
 
-var_name_map = {
-        'hur'   :'RELHUM',
-        'hus'   :'QV',
-        'hurs'  :'RELHUM_S',
-        'ta'    :'T', 
-        'tas'   :'T_S', 
-        'ps'    :'PS', 
-        'ua'    :'U', 
-        'va'    :'V',
-        'zg'    :'PHI',
-        'orog'  :'HSURF',
-        }
+# set up list of variable names
 var_names = args.var_names.split(',')
+print('Run {} for variable names {}.'.format(args.processing_step, var_names))
+
+
 for var_name in var_names:
-    if var_name not in var_name_map:
-            raise ValueError('Input var_name {} is invalid.'.format(
-                            var_name))
+    print(var_name)
+
+    # for ps, take ERA climate mean value (i.e. e.g. ps_historical.nc)
+    if var_name == 'ps':
+        var_file_name = era_climate_file_names.format(var_name)
+    # for all other variables, take climate delta (i.e. e.g. tas_delta.nc)
+    else:
+        var_file_name = climate_delta_file_names.format(var_name)
+
+    inp_file = os.path.join(args.input_directory, var_file_name)
+    out_file = os.path.join(args.output_directory, var_file_name)
 
 
-if performsmooth:
-#settings for timesmoothing script:
+    ## smoothing
+    if args.processing_step == 'smoothing':
 
-    #list of the files that contain the variables to be smoothed
-    #samepath = '/project/pr94/robro/inputfiles_for_surrogate_hadgem/input_github/'
-    samepath = '/scratch/snx3000/heimc/pgw/deltas/day/MPI-ESM1-2-HR/'
-    annualcycleraw = [
-    samepath+'tas_delta.nc',
-    #samepath+'Diff_HadGEM2-ES_RCP85_PP.nc',
-    #samepath+'Diff_HadGEM2-ES_RCP85_QV.nc',
-    #samepath+'Diff_HadGEM2-ES_RCP85_QV_S.nc',
-    #samepath+'Diff_HadGEM2-ES_RCP85_T.nc',
-    #samepath+'Diff_HadGEM2-ES_RCP85_T_S.nc',
-    #samepath+'Diff_HadGEM2-ES_RCP85_T_SO.nc',
-    #samepath+'Diff_HadGEM2-ES_RCP85_U.nc',
-    #samepath+'Diff_HadGEM2-ES_RCP85_V.nc',
-    #samepath+'Diff_HadGEM2-ES_RCP85_RELHUM.nc',
-    #samepath+'Diff_HadGEM2-ES_RCP85_RELHUM_S.nc'
-    ]
-    #list of variablenames
-    #variablename_to_smooth = ['PP', 'QV', 'QV_S', 'T', 'T_S', 'T_SO', 'U', 'V','RELHUM','RELHUM_S']
-    variablename_to_smooth = ['tas']
-    #path to put the output netcdf
-    outputpath = '/scratch/snx3000/heimc/pgw/test_smoothing/'
+        filter_data(inp_file, var_name, out_file)
 
+    ## regridding
+    elif args.processing_step == 'regridding':
 
-    #enter the command to run the script:
-    for num,pathi in enumerate(annualcycleraw):
-            commandsmooth = f"python timesmoothing.py {pathi} {variablename_to_smooth[num]} {outputpath} > outputfile_smooth.txt &"
-            subprocess.run(commandsmooth, shell=True)
-            print(commandsmooth)
-    
-
-if regridhorinew:
-    ###########################################################################
-    ### Namelist
-    ###########################################################################
-    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon/MPI-ESM1-2-HR'
-    gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Emon_RHint/MPI-ESM1-2-HR'
-    #gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/Amon/MPI-ESM1-2-HR'
-    delta_inp_name_base='{}_delta.nc'
-    delta_out_name_base='{}_delta.nc'
-
-    #delta_inp_name_base='{}_historical.nc'
-    #delta_out_name_base='{}_historical.nc'
-
-    #delta_inp_name_base='{}_ssp585.nc'
-    #delta_out_name_base='{}_ssp585.nc'
-
-    #gcm_data_path='/scratch/snx3000/heimc/pgw/deltas/test2/MPI-ESM1-2-HR'
-    #delta_name_base='plev_{}_delta.nc'
-
-    #out_dir = '/scratch/snx3000/heimc/pgw/regridded/Emon/extpar_SA_3'
-    #out_dir = '/scratch/snx3000/heimc/pgw/regridded/Emon_RHint/MPI-ESM1-2-HR'
-    out_dir = '/scratch/snx3000/heimc/pgw/regridded/Emon_xr/MPI-ESM1-2-HR'
-    #out_dir = '/scratch/snx3000/heimc/pgw/regridded/Amon/MPI-ESM1-2-HR'
-    #out_grid_file = 'target_grid_SA_3'
-    #out_grid_file = 'target_grid_extpar_SA_3'
-    #out_grid_file = 'target_grid_era5'
-    #out_grid_file = 'target_grid_era5_test'
-    #out_grid_file = 'target_grid_era5_test2'
-    #out_grid_file = 'target_grid_era5_test3'
-    target_file_path = '/scratch/snx3000/heimc/lmp/wd/06080100_SA_3_ctrl/int2lm_in/cas20060801000000.nc'
-    ###########################################################################
-
-    Path(out_dir).mkdir(parents=True, exist_ok=True)
-
-    #for var_name in var_names:
-    #    print('regrid horizontal {}'.format(var_name))
-    #    inp_file = os.path.join(gcm_data_path, delta_inp_name_base.format(var_name))
-    #    out_file = os.path.join(out_dir, delta_out_name_base.format(var_name))
-    #    #print(inp_file)
-    #    #print(out_file)
-    #    cdo_remap(out_grid_file, inp_file, out_file, method='bil')
-
-    #    #target_file = os.path.join(target_file_path, 'cas20060805000000.nc')
-    #    #ds_gcm = xr.open_dataset(inp_file)
-    #    #ds_target = xr.open_dataset(target_file)
-    #    #regridder = xe.Regridder(ds_gcm, ds_target, "bilinear")
-    #    ##dr_out = regridder(dr)
-    #    #quit()
-
-    for var_name in var_names:
-        print('regrid horizontal {}'.format(var_name))
-        inp_file = os.path.join(gcm_data_path, delta_inp_name_base.format(var_name))
-        out_file = os.path.join(out_dir, delta_out_name_base.format(var_name))
-        #print(inp_file)
-        #print(out_file)
-        targ_lon = xr.open_dataset(target_file_path).lon
-        targ_lat = xr.open_dataset(target_file_path).lat
+        targ_lon = xr.open_dataset(args.era5_file_path).lon
+        targ_lat = xr.open_dataset(args.era5_file_path).lat
         ds_in = xr.open_dataset(inp_file)
         ds_out = ds_in.interp(lon=targ_lon, lat=targ_lat)
         ds_out.to_netcdf(out_file)
-
-        #test = xr.open_dataset('/scratch/snx3000/heimc/pgw/regridded/Emon/MPI-ESM1-2-HR/tas_delta.nc')
-        #test = test.assign_coords({'lat':ds_out.lat.values})
-        #test = test - ds_out
-        #test.to_netcdf('test.nc')
-        #quit()
-
 

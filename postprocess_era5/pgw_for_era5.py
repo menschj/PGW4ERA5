@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 description     PGW for ERA5
-author		Christoph Heim based on original developments by Roman Brogli
-date created    12.01.2022
+authors		    Before 2022: original developments by Roman Brogli
+                After 2022:  updates by Christoph Heim 
 """
 ##############################################################################
 import argparse, os
