@@ -1,16 +1,13 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
-description     Class for parallel computing.
-author		Christoph Heim
-date created    21.03.2019
-usage		use in another script
+description     Helper class for parallel computing.
+author		    Christoph Heim
+usage		    use in another script
 """
 ###############################################################################
 import multiprocessing as mp
 ###############################################################################
-
-
 
 def starmap_helper(tup):
     func = tup['func']
@@ -91,7 +88,7 @@ if __name__ == '__main__':
     else:
         njobs = 1
     
-    # TEST BASE 
+    # testing
     t0 = time.time()
     IMP = IterMP(njobs=njobs, run_async=False)
     fargs = {'fixed_arg':'fixed',}

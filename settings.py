@@ -3,20 +3,24 @@
 """
 description     Settings namelist for all routines in PGW for ERA5
 authors		    Before 2022: original developments by Roman Brogli
-                After 2022:  updates by Christoph Heim 
+                Since 2022:  upgrade to PGW for ERA5 by Christoph Heim 
 """
 ##############################################################################
 ##############################################################################
 
 ### GENERAL SETTINGS
 ##############################################################################
-# File naming convention for climate deltas
+# File naming convention for GCM climate deltas
 # ({} is placeholder for variable name).
-climate_delta_file_names = '{}_delta.nc'
-# File naming convention for ERA climatological files 
+climate_delta_file_name_base = '{}_delta.nc'
+# File naming convention for GCM files for the ERA climatology
 # ({} is placeholder for variable name).
 # This is required exclusively for the surface pressure (ps).
-era_climate_file_names = '{}_historical.nc'
+era_climate_file_name_base = '{}_historical.nc'
+
+# File naming convention for ERA5 files to be read in and written out.
+era5_file_name_base = 'cas{:%Y%m%d%H}0000.nc'
+era5_file_name_base = 'caf{:%Y%m%d%H}.nc'
 
 ### SMOOTHING AND INTERPOLATE
 ##############################################################################

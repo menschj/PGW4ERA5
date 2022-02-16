@@ -3,7 +3,7 @@
 """
 description     Auxiliary functions for PGW for ERA5
 authors		    Before 2022: original developments by Roman Brogli
-                Since 2022:  updates by Christoph Heim 
+                Since 2022:  upgrade to PGW for ERA5 by Christoph Heim 
 """
 ##############################################################################
 import os, math
@@ -29,7 +29,8 @@ def dt64_to_dt(date):
       date - a np.datetime64 object
     Output:
       DATE - a python datetime object
-    source: https://gist.github.com/blaylockbk/1677b446bc741ee2db3e943ab7e4cabd
+    source: 
+      https://gist.github.com/blaylockbk/1677b446bc741ee2db3e943ab7e4cabd
     """
     timestamp = ((date - np.datetime64('1970-01-01T00:00:00'))
                  / np.timedelta64(1, 's'))
@@ -116,7 +117,8 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
 ##### CLIMATE DELTA COMPUTATION AND INTERPOLATION
 ##############################################################################
 def load_delta(delta_inp_path, var_name, era_date_time, 
-               delta_date_time=None, name_base=climate_delta_file_names):
+               delta_date_time=None,
+               name_base=climate_delta_file_name_base):
     """
     Load a climate delta and if delta_date_time is given,
     interpolate it to that date and time of the year.
@@ -143,7 +145,8 @@ def load_delta(delta_inp_path, var_name, era_date_time,
         next_year.time.values = dt64_to_dt(
                     next_year.time).replace(
                             year=delta_date_time.year+1)
-        full_delta = xr.concat([last_year, full_delta, next_year], dim='time')
+        full_delta = xr.concat([last_year, full_delta, next_year],
+                                dim='time')
 
         # interpolate in time and select variable
         delta = full_delta[var_name].interp(time=delta_date_time, 
@@ -194,7 +197,8 @@ def load_delta_interp(delta_inp_path, var_name, target_P,
           the interpolation to the ERA5 model levels more precise.
         - vertically interpolate climate deltas to ERA5 model levels
     """
-    delta = load_delta(delta_inp_path, var_name, era_date_time, delta_date_time)
+    delta = load_delta(delta_inp_path, var_name, 
+                        era_date_time, delta_date_time)
 
     ## for specific variables also load climate delta for surface
     ## values and the historical surface pressure.
@@ -204,7 +208,7 @@ def load_delta_interp(delta_inp_path, var_name, target_P,
                             era_date_time, delta_date_time)
         ps_hist = load_delta(delta_inp_path, 'ps', 
                             era_date_time, delta_date_time,
-                            name_base=era_climate_file_names)
+                            name_base=era_climate_file_name_base)
     else:
         delta_sfc = None
         ps_hist = None
@@ -399,7 +403,8 @@ def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
 
         # raise value if extrapolation is required but not enabled.
         if require_extrap and extrapolate == 'off':
-            raise ValueError('Extrapolation deactivated but data out of bounds.')
+            raise ValueError('Extrapolation deactivated but data '+
+                             'out of bounds.')
 
         # interpolate/extrapolate values
         if i1 == i2:
@@ -455,7 +460,8 @@ def filter_data(annualcycleraw, variablename_to_smooth, outputpath):
 		A netcdf file containing the smoothed annual cycle. 
 	"""	
 
-	Diff = xr.open_dataset(annualcycleraw)[variablename_to_smooth].squeeze()
+	Diff = xr.open_dataset(annualcycleraw
+                )[variablename_to_smooth].squeeze()
 	coords = Diff.coords
 
 	print('Dimension that is assumed to be time dimension is called: ', 

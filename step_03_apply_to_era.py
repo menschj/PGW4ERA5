@@ -1,9 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
-description     PGW for ERA5
+description     PGW for ERA5 main routine to update ERA5 files with climate
+                deltas to transition from ERA climate to PGW climate.
 authors		    Before 2022: original developments by Roman Brogli
-                After 2022:  updates by Christoph Heim 
+                Since 2022:  upgrade to PGW for ERA5 by Christoph Heim 
 """
 ##############################################################################
 import argparse, os
@@ -11,18 +12,25 @@ import xarray as xr
 import numpy as np
 from pathlib import Path
 from datetime import datetime, timedelta
-from base.functions import (
-        specific_to_relative_humidity,
-        relative_to_specific_humidity,
-        load_delta,
-        load_delta_interp,
-        integ_geopot,
-        interp_logp_3d,
-        determine_p_ref,
-        )
+from functions import (
+    specific_to_relative_humidity,
+    relative_to_specific_humidity,
+    load_delta,
+    load_delta_interp,
+    integ_geopot,
+    interp_logp_3d,
+    determine_p_ref,
+    )
 from constants import CON_G, CON_RD
 from parallel import IterMP
-from settings import *
+from settings import (
+    i_debug,
+    i_reinterp,
+    era5_file_name_base,
+    var_name_map,
+    TIME_ERA, VERT_ERA, VERT_HL_ERA, LON_ERA, LAT_ERA, SOIL_HL_ERA,
+    TIME_GCM, 
+    )
 ##############################################################################
 
 def pgw_for_era5(inp_era_file_path, out_era_file_path,
@@ -97,13 +105,33 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     # open data set
     laffile = xr.open_dataset(inp_era_file_path, decode_cf=False)
 
-    # compute pressure on ERA5 levels and half-levels
-    pa_era = (laffile.akm + 
-              laffile[var_name_map['ps']] * laffile.bkm).transpose(
-                TIME_ERA, VERT_ERA, LAT_ERA, LON_ERA)
+    ## compute pressure on ERA5 full levels and half levels
+    # pressure on half levels
     pa_hl_era = (laffile.ak + 
                 laffile[var_name_map['ps']] * laffile.bk).transpose(
                 TIME_ERA, VERT_HL_ERA, LAT_ERA, LON_ERA)
+    # if akm and akb coefficients (for full levels) exist, use them
+    if 'akm' in laffile:
+        akm = laffile.akm
+        bkm = laffile.bkm
+    # if akm and abk  coefficients do not exist, computed them
+    # with the average of the half-level coefficients above and below
+    else:
+        akm = (
+            0.5 * laffile.ak.diff(
+            dim=VERT_HL_ERA, 
+            label='lower').rename({VERT_HL_ERA:VERT_ERA}) + 
+            laffile.ak.isel({VERT_HL_ERA:range(len(laffile.level1)-1)}).values
+        )
+        bkm = (
+            0.5 * laffile.ak.diff(
+            dim=VERT_HL_ERA, 
+            label='lower').rename({VERT_HL_ERA:VERT_ERA}) + 
+            laffile.ak.isel({VERT_HL_ERA:range(len(laffile.level1)-1)}).values
+        )
+    # pressure on full levels
+    pa_era = (akm + laffile[var_name_map['ps']] * bkm).transpose(
+                TIME_ERA, VERT_ERA, LAT_ERA, LON_ERA)
 
     # compute relative humidity in ERA climate state
     laffile[var_name_map['hur']] = specific_to_relative_humidity(
@@ -297,7 +325,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
             vars_pgw[var_name] = var_era + dvar
 
 
-    ## fields in ERA file
+    ## update fields in ERA file
     laffile[var_name_map['ps']] = ps_pgw
     for var_name in ['ta', 'hus', 'ua', 'va']:
         laffile[var_name_map[var_name]] = vars_pgw[var_name]
@@ -317,6 +345,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
 
 
 
+##############################################################################
 if __name__ == "__main__":
     ## input arguments
     parser = argparse.ArgumentParser(description =
@@ -332,22 +361,38 @@ if __name__ == "__main__":
     parser.add_argument('-H', '--hour_inc_step', type=int, default=3)
 
     # input era5 directory
-    parser.add_argument('-i', '--input_dir', type=str)
+    parser.add_argument('-i', '--input_dir', type=str, default=None,
+            help='Directory with ERA5 input files to add deltas.')
 
     # output era5 directory
-    parser.add_argument('-o', '--output_dir', type=str)
+    parser.add_argument('-o', '--output_dir', type=str, default=None,
+            help='Directory to store processed ERA5 files.')
 
     # climate delta directory (already remapped to ERA5 grid)
-    parser.add_argument('-d', '--delta_input_dir', type=str)
-
-    # ERA5 file name base
-    parser.add_argument('-b', '--file_name_base', type=str, 
-                        default='cas{:%Y%m%d%H}0000.nc')
+    parser.add_argument('-d', '--delta_input_dir', type=str, default=None,
+            help='Directory with GCM climate deltas to be used. ' +
+            'This directory should have a climate delta for ta,hur,' +
+            'ua,va,zg,tas,hurs (e.g. ta_delta.nc), as well as the ' +
+            'ps value from the ERA climatology (e.g. ps_historical). ' +
+            'All files have to be horizontally remapped to the grid of ' +
+            'the ERA5 files used (see step_02_preproc_deltas.py).')
 
     # number of parallel jobs
-    parser.add_argument('-p', '--n_par', type=int, default=1)
+    parser.add_argument('-p', '--n_par', type=int, default=1,
+            help='Number of parallel tasks. Parallelization is done ' +
+            'on the level of individual ERA5 files being processed at ' +
+            'the same time.')
 
     args = parser.parse_args()
+    ##########################################################################
+
+    # make sure required input arguments are set.
+    if args.input_dir is None:
+        raise ValueError('Input directory (-i) is required.')
+    if args.output_dir is None:
+        raise ValueError('Output directory (-o) is required.')
+    if args.delta_input_dir is None:
+        raise ValueError('Delta input directory (-d) is required.')
 
     # first date and last date to datetime object
     first_era_step = datetime.strptime(args.first_era_step, '%Y%m%d%H')
@@ -365,15 +410,16 @@ if __name__ == "__main__":
     fargs = {'delta_input_dir':args.delta_input_dir}
     step_args = []
 
+    ##########################################################################
     # iterate over time step and prepare function arguments
     for era_step_dt in era_step_dts:
         print(era_step_dt)
 
         # set output and input ERA5 file
         inp_era_file_path = os.path.join(args.input_dir, 
-                args.file_name_base.format(era_step_dt))
+                era5_file_name_base.format(era_step_dt))
         out_era_file_path = os.path.join(args.output_dir, 
-                args.file_name_base.format(era_step_dt))
+                era5_file_name_base.format(era_step_dt))
 
         step_args.append({
             'inp_era_file_path':inp_era_file_path,
