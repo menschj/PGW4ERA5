@@ -1,9 +1,9 @@
 #!/bin/bash -l
 #
-#SBATCH --job-name="prep pgw"
-#SBATCH --time=06:00:00
+#SBATCH --job-name="post pgw12"
+#SBATCH --time=00:30:00
 #SBATCH --cpus-per-task=12
-#SBATCH --partition=normal
+#SBATCH --partition=debug
 #SBATCH --output=/scratch/snx3000/heimc/pgw/out_scripts/out0
 #SBATCH --error=/scratch/snx3000/heimc/pgw/out_scripts/err0
 #SBATCH --ntasks=1
@@ -11,26 +11,47 @@
 #SBATCH --constraint=gpu
 
 source ~/phd_scripts/load_modules_daint.sh
-echo -e "$SLURM_JOB_NAME started on $(date):\n $command $1 $2\n"
+echo -e "$SLURM_JOB_NAME started on $(date):\n"
 
-var_names=ta,hur,ps,ua,va,tas,hurs
-#var_names=ta,hur,pa,ua,va
-#var_names=ta
-#var_names=hur
-#var_names=pa
-#var_names=ua
-#var_names=va
-#var_names=tas
-#var_names=hurs
-
-#var_names=hur,pa
-#var_names=ua,va
-#var_names=tas,hurs
+## rename 2D fields
+## NOT NECESSARY ANYMORE!
+#srun -c $SLURM_CPUS_PER_TASK python -u my_rename_variables.py tas
+#srun -c $SLURM_CPUS_PER_TASK python -u my_rename_variables.py hurs
+#srun -c $SLURM_CPUS_PER_TASK python -u my_rename_variables.py hurs,tas
 
 
-echo $var_names
-srun -c $SLURM_CPUS_PER_TASK python -u my_settings.py \
-                -p $SLURM_CPUS_PER_TASK $var_names -n 8
+### MANUALLY
+############################################################
+############################################################
+
+### perpare laf file
+############################################################
+#srun -c $SLURM_CPUS_PER_TASK python -u laf_adapt.py
+
+### perpare lbfd files
+############################################################
+year=2006
+start_month=08
+end_month=09
+start_day=01
+end_day=21
+
+start_dayhr=${start_day}00
+end_dayhr=${end_day}00
+#sim_start_date=${year}${start_month}${start_day}
+sim_start_date=${year}${start_month}0100 # CH202112
+
+arg_f=2006080100
+arg_l=2006082100
+
+#arg_f=${year}${start_month}${start_dayhr}
+#arg_l=${year}${end_month}${end_dayhr}
+
+srun -c $SLURM_CPUS_PER_TASK python -u laf_adapt.py -d 3 \
+                -f ${arg_f} -l ${arg_l} -s ${sim_start_date} \
+                -p $SLURM_CPUS_PER_TASK
+
+
 
 echo -e "$SLURM_JOB_NAME finished on $(date)\n"
 

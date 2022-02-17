@@ -24,7 +24,7 @@ era_climate_file_name_base = '{}_historical.nc'
 
 # File naming convention for ERA5 files to be read in and written out.
 era5_file_name_base = 'cas{:%Y%m%d%H}0000.nc'
-era5_file_name_base = 'caf{:%Y%m%d%H}.nc'
+#era5_file_name_base = 'caf{:%Y%m%d%H}.nc'
 
 
 ### 02 PREPROCESS DELTAS 
@@ -40,7 +40,7 @@ era5_file_name_base = 'caf{:%Y%m%d%H}.nc'
 # the latter should be identical to XESMF
 # except for tiny differences that appear to originate from
 # numerical precision
-i_use_xesmf_regridding = 1
+i_use_xesmf_regridding = 0
 
 
 ### SURFACE PRESSURE ADJUSTMENT SETTINGS 

@@ -15,8 +15,9 @@ from constants import CON_RD, CON_G
 from settings import (
     i_debug,
     i_use_xesmf_regridding,
+    era_climate_file_name_base,
     climate_delta_file_name_base,
-    LON_ERA, LAT_ERA,
+    TIME_ERA, VERT_ERA, VERT_HL_ERA, LON_ERA, LAT_ERA,
     TIME_GCM, PLEV_GCM, LON_GCM, LAT_GCM,
 )
 if i_use_xesmf_regridding:

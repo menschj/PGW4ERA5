@@ -88,67 +88,67 @@ if __name__ == '__main__':
     amon_hur = xr.open_dataset(args.amon_hur_file, decode_cf=False).hur
 
     hur_interp = hur.copy()
-    print(amon_hur.plev.values)
-    print(hur.plev.values)
+    #print(amon_hur.plev.values)
+    #print(hur.plev.values)
 
-    #for plev in hur.plev.values:
-    #    if plev not in amon_hur.plev.values:
-    #        print(plev)
-    #        plev_below = amon_hur.plev.where((amon_hur.plev-plev) > 0, np.nan)
-    #        plev_below = amon_hur.plev.isel(plev=plev_below.argmin(dim='plev').values).values
+    for plev in hur.plev.values:
+        if plev not in amon_hur.plev.values:
+            #print(plev)
+            plev_below = amon_hur.plev.where((amon_hur.plev-plev) > 0, np.nan)
+            plev_below = amon_hur.plev.isel(plev=plev_below.argmin(dim='plev').values).values
 
-    #        plev_above = amon_hur.plev.where((amon_hur.plev-plev) < 0, np.nan)
-    #        plev_above = amon_hur.plev.isel(plev=plev_above.argmax(dim='plev').values).values
+            plev_above = amon_hur.plev.where((amon_hur.plev-plev) < 0, np.nan)
+            plev_above = amon_hur.plev.isel(plev=plev_above.argmax(dim='plev').values).values
 
-    #        #print(plev_above)
-    #        #print(plev_below)
+            #print(plev_above)
+            #print(plev_below)
 
-    #        hur_plev = hur.sel(plev=plev)
-    #        hur_above = hur.sel(plev=plev_above)
-    #        hur_below = hur.sel(plev=plev_below)
+            hur_plev = hur.sel(plev=plev)
+            hur_above = hur.sel(plev=plev_above)
+            hur_below = hur.sel(plev=plev_below)
 
-    #        #print(hur_above.isel(time=0,lon=10,lat=10).values)
-    #        #print(hur_plev.isel(time=0,lon=10,lat=10).values)
-    #        #print(hur_below.isel(time=0,lon=10,lat=10).values)
+            #print(hur_above.isel(time=0,lon=10,lat=10).values)
+            #print(hur_plev.isel(time=0,lon=10,lat=10).values)
+            #print(hur_below.isel(time=0,lon=10,lat=10).values)
 
-    #        weight_above = 1 - np.abs(hur_plev - hur_above)/(
-    #                            np.abs(hur_plev - hur_above) +
-    #                            np.abs(hur_plev - hur_below))
-    #        weight_below = 1 - np.abs(hur_plev - hur_below)/(
-    #                            np.abs(hur_plev - hur_above) +
-    #                            np.abs(hur_plev - hur_below))
+            weight_above = 1 - np.abs(hur_plev - hur_above)/(
+                                np.abs(hur_plev - hur_above) +
+                                np.abs(hur_plev - hur_below))
+            weight_below = 1 - np.abs(hur_plev - hur_below)/(
+                                np.abs(hur_plev - hur_above) +
+                                np.abs(hur_plev - hur_below))
 
-    #        #print(weight_above.isel(time=0,lon=10,lat=10).values)
-    #        #print(weight_below.isel(time=0,lon=10,lat=10).values)
+            #print(weight_above.isel(time=0,lon=10,lat=10).values)
+            #print(weight_below.isel(time=0,lon=10,lat=10).values)
 
-    #        interp = (
-    #            amon_hur.sel(plev=plev_above) * weight_above +
-    #            amon_hur.sel(plev=plev_below) * weight_below 
-    #        )
-    #        #print(interp.isel(time=0,lon=10,lat=10).values)
-    #        #print()
-    #        hur_interp.loc[dict(plev=plev)] = interp
-    #        #quit()
-    #    else:
-    #        hur_interp.loc[dict(plev=plev)] = amon_hur.sel(plev=plev)
-    ##quit()
+            interp = (
+                amon_hur.sel(plev=plev_above) * weight_above +
+                amon_hur.sel(plev=plev_below) * weight_below 
+            )
+            #print(interp.isel(time=0,lon=10,lat=10).values)
+            #print()
+            hur_interp.loc[dict(plev=plev)] = interp
+            #quit()
+        else:
+            hur_interp.loc[dict(plev=plev)] = amon_hur.sel(plev=plev)
+    #quit()
 
 
-    #handles = []
-    #handle, = plt.plot(hur.mean(dim=['time','lon','lat']),
-    #         hur.plev, label='fine comp')
-    #handles.append(handle)
-    #handle, = plt.plot(amon_hur.mean(dim=['time','lon','lat']),
-    #         amon_hur.plev, label='coarse')
-    #handles.append(handle)
-    #handle, = plt.plot(hur_interp.mean(dim=['time','lon','lat']),
-    #         hur_interp.plev, label='interp')
-    #handles.append(handle)
-    #plt.legend(handles=handles)
-    #plt.ylim((100000,5000))
-    #plt.ylabel('p [Pa]')
-    #plt.xlabel('RH [%]')
-    #plt.show()
+    handles = []
+    handle, = plt.plot(hur.mean(dim=['time','lon','lat']),
+             hur.plev, label='Emon hur=f(hus,ta)')
+    handles.append(handle)
+    handle, = plt.plot(amon_hur.mean(dim=['time','lon','lat']),
+             amon_hur.plev, label='Amon hur')
+    handles.append(handle)
+    handle, = plt.plot(hur_interp.mean(dim=['time','lon','lat']),
+             hur_interp.plev, label='Amon hur interpolated using Emon hur')
+    handles.append(handle)
+    plt.legend(handles=handles)
+    plt.ylim((100000,5000))
+    plt.ylabel('p [Pa]')
+    plt.xlabel('RH [%]')
+    plt.show()
     ##quit()
 
     ds_out = ds.copy()

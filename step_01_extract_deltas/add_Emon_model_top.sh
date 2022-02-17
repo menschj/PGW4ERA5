@@ -1,19 +1,32 @@
 #!/bin/bash
 
-out_base_dir=/net/o3/hymet_nobackup/heimc/data/pgw
-inp_base_dir=/net/atmos/data/cmip6
+# base directory where output should be stored
+out_base_dir=/net/o3/hymet_nobackup/heimc/data/pgw/deltas/native
 
+# name of the GCM to extract data for
+gcm_name=MPI-ESM1-2-HR
+
+## type of CMIP6 model output (e.g. monthly or daily, etc.)
+## to use
+# high-resolution monthly data for only very few GCMs
 table_ID=Emon
 
-model=MPI-ESM1-2-HR
-experiments=(historical ssp585 delta)
-
-var_names=(ua va ta zg hur hus)
+## select variables to add model top
+var_names=(ua va ta zg hur)
 #var_names=(hur)
 
+## CMIP experiments to use to compute climate deltas
+## --> climate delta = future climatology - ERA climatology
+# CMIP experiment to use for ERA climatology 
+era_climate_experiment=historical
+# CMIP experiment to use for future climatology 
+future_climate_experiment=ssp585
 
-table_ID_out_base_dir=$out_base_dir/$table_ID
-out_dir=$table_ID_out_base_dir/$model
+# iterate over both experiments and climate delta
+experiments=($era_climate_experiment $future_climate_experiment delta)
+
+
+out_dir=$out_base_dir/$table_ID/$gcm_name
 
 for var_name in ${var_names[@]}; do
     echo "#################################################################"
@@ -33,7 +46,7 @@ for var_name in ${var_names[@]}; do
                 $out_dir/Emon_model_bottom_${var_name}_${experiment}.nc
 
             Amon_out_base_dir=$out_base_dir/Amon
-            Amon_out_dir=$Amon_out_base_dir/$model
+            Amon_out_dir=$Amon_out_base_dir/$gcm_name
             cdo sellevel,7000,5000,3000,2000,1000,500,100 \
                 $Amon_out_dir/${var_name}_${experiment}.nc \
                 $out_dir/Amon_model_top_${var_name}_${experiment}.nc
