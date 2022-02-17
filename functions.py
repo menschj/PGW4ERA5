@@ -12,7 +12,15 @@ import numpy as np
 from numba import njit
 from datetime import datetime,timedelta
 from constants import CON_RD, CON_G
-from settings import *
+from settings import (
+    i_debug,
+    i_use_xesmf_regridding,
+    climate_delta_file_name_base,
+    LON_ERA, LAT_ERA,
+    TIME_GCM, PLEV_GCM, LON_GCM, LAT_GCM,
+)
+if i_use_xesmf_regridding:
+    import xesmf as xe
 
 ## TODO DEBUG
 #from matplotlib import pyplot as plt
@@ -167,26 +175,26 @@ def load_delta(delta_inp_path, var_name, era_date_time,
     return(delta)
 
 
-## TODO DEBUG START
-def load_delta_old(delta_inp_path, var_name, era_date_time, 
-               delta_date_time=None, name_base='{}_delta.nc'):
-    """
-    Load a climate delta and if delta_date_time is given,
-    interpolate it to that date and time of the year.
-    """
-
-    def hour_of_year(dt): 
-        beginning_of_year = datetime(dt.year, 1, 1, tzinfo=dt.tzinfo)
-        return(int((dt - beginning_of_year).total_seconds() // 3600))
-    name_base = name_base.split('.nc')[0] + '_{:05d}.nc'
-    diff_time_step = int(hour_of_year(delta_date_time)/3)
-    delta = xr.open_dataset(os.path.join(delta_inp_path,
-            name_base.format(var_name, diff_time_step)))[var_name]
-    # make sure time is in the same format as in laf file
-    delta['time'] = era_date_time
-
-    return(delta)
-## TODO DEBUG STOP
+### TODO DEBUG START
+#def load_delta_old(delta_inp_path, var_name, era_date_time, 
+#               delta_date_time=None, name_base='{}_delta.nc'):
+#    """
+#    Load a climate delta and if delta_date_time is given,
+#    interpolate it to that date and time of the year.
+#    """
+#
+#    def hour_of_year(dt): 
+#        beginning_of_year = datetime(dt.year, 1, 1, tzinfo=dt.tzinfo)
+#        return(int((dt - beginning_of_year).total_seconds() // 3600))
+#    name_base = name_base.split('.nc')[0] + '_{:05d}.nc'
+#    diff_time_step = int(hour_of_year(delta_date_time)/3)
+#    delta = xr.open_dataset(os.path.join(delta_inp_path,
+#            name_base.format(var_name, diff_time_step)))[var_name]
+#    # make sure time is in the same format as in laf file
+#    delta['time'] = era_date_time
+#
+#    return(delta)
+### TODO DEBUG STOP
 
 def load_delta_interp(delta_inp_path, var_name, target_P,
                     era_date_time, delta_date_time,
@@ -527,62 +535,201 @@ def filter_data(annualcycleraw, variablename_to_smooth, outputpath):
 
 
 def harmonic_ac_analysis(ts):
-	"""
-	Estimation of the harmonics according to formula 12.19 -
-	12.23 on p. 264 in Storch & Zwiers
+    """
+    Estimation of the harmonics according to formula 12.19 -
+    12.23 on p. 264 in Storch & Zwiers
 
-	Is incomplete since it is only for use in surrogate smoothing 
+    Is incomplete since it is only for use in surrogate smoothing 
     --> only the part of the formulas that is needed there
 
-	Arguments:
-		ts: a 1-d numpy array of a timeseries
+    Arguments:
+        ts: a 1-d numpy array of a timeseries
 
-	Returns:
-		hcts: a reconstructed smoothed timeseries 
+    Returns:
+        hcts: a reconstructed smoothed timeseries 
                 (the more modes are summed the less smoothing)
-		mean: the mean of the timeseries (needed for reconstruction)
-	"""
-	
-	if np.any(np.isnan(ts) == True): #if there are nans, return nans
-		smooths = np.full_like(ts, np.nan) #sys.exit('There are nan values')
-		return smooths
-	else:
-        #calculate the mean of the timeseries (used for reconstruction)
-		mean = ts.mean() 
-	
-		lt = len(ts) #how long is the timeseries?
-		P = lt
+        mean: the mean of the timeseries (needed for reconstruction)
+    """
 
-		#initialize the output array. 
+    if np.any(np.isnan(ts) == True): #if there are nans, return nans
+        smooths = np.full_like(ts, np.nan) #sys.exit('There are nan values')
+        return smooths
+    else:
+        #calculate the mean of the timeseries (used for reconstruction)
+        mean = ts.mean() 
+
+        lt = len(ts) #how long is the timeseries?
+        P = lt
+
+        #initialize the output array. 
         #we will use at max 4 modes for reconstruction 
         #(for peformance reasons, it can be increased)
-		hcts = np.zeros((4,lt))
+        hcts = np.zeros((4,lt))
 
-		timevector=np.arange(1,lt+1,1)	#timesteps used in calculation	
+        timevector=np.arange(1,lt+1,1)	#timesteps used in calculation	
 
         #a measure that is to check that the performed calculation 
         # is justified.
-		q = math.floor(P/2.) 
-	
+        q = math.floor(P/2.) 
+
         #create the reconstruction timeseries, mode by mode 
         #(starting at 1 until 5, if one wants more smoothing 
         #this number can be increased.)
-		for i in range(1,4): 
-			if i < q: #only if this is true the calculation is valid
-			
-				#these are the formulas from Storch & Zwiers
-				bracket = 2.*math.pi*i/P*timevector
-				a = 2./lt*(ts.dot(np.cos(bracket))) 
+        for i in range(1,4): 
+            if i < q: #only if this is true the calculation is valid
+            
+                #these are the formulas from Storch & Zwiers
+                bracket = 2.*math.pi*i/P*timevector
+                a = 2./lt*(ts.dot(np.cos(bracket))) 
                 #dot product (Skalarprodukt) for scalar number output!
-				b = 2./lt*(ts.dot(np.sin(bracket))) 
-				
+                b = 2./lt*(ts.dot(np.sin(bracket))) 
+                
                 #calculate the reconstruction time series
-				hcts[i-1,:] = a * np.cos(bracket) + b * np.sin(bracket) 
-			
-			else: #abort if the above condition is not fulfilled. In this case more programming is needed.
-				sys.exit('Whooops that should not be the case for a yearly '+
+                hcts[i-1,:] = a * np.cos(bracket) + b * np.sin(bracket) 
+            
+            else: #abort if the above condition is not fulfilled. In this case more programming is needed.
+                sys.exit('Whooops that should not be the case for a yearly '+
                 'timeseries! i (reconstruction grade) is larger than '+
                 'the number of timeseries elements / 2.')
 
-		smooths = sum(hcts[0:3,:]) + mean
-		return smooths
+        smooths = sum(hcts[0:3,:]) + mean
+        return smooths
+
+
+
+
+##############################################################################
+##### BILINEAR REGRIDDING
+##############################################################################
+def regrid_lat_lon(ds_gcm, ds_era5, var_name,
+                    method='bilinear', i_use_xesmf=0):
+    """
+    Method to do lat/lon bilinear interpolation for periodic or non-periodic
+    grid either with xesmf (i_use_xesmf), or with an xarray-only 
+    implementation if the xesmf package is not installed.
+    """
+    if method != 'bilinear':
+        NotImplementedError()
+
+    targ_lon = ds_era5[LON_ERA]
+    targ_lat = ds_era5[LAT_ERA]
+
+    ## determine if GCM data set is periodic
+    dlon_gcm = np.median(np.diff(ds_gcm[LON_GCM].values))
+    dlat_gcm = np.median(np.diff(ds_gcm[LAT_GCM].values))
+    if (dlon_gcm + np.max(ds_gcm[LON_GCM].values) - 
+                  np.min(ds_gcm[LON_GCM].values)) >= 359.9:
+        periodic_lon = True
+        if i_debug >= 1:
+            print('Regridding: Use periodic boundary conditions as GCM ' +
+                   'data appears to be periodic in longitudinal ' +
+                   'direction.')
+    else:
+        periodic_lon = False
+
+
+    #### IMPLEMENTATION WITH XESMF
+    ##########################################################################
+    ## XESMF sometimes alters the exact values of the latitude coordinate
+    ## a little bit which was found to be problematic. Therefore, there is an
+    ## xarray-only implmenetation below.
+    if i_use_xesmf:
+        ds_in = ds_gcm
+        regridder = xe.Regridder(ds_in, ds_era5, "bilinear", 
+                                 periodic=periodic_lon)
+        print(regridder)
+        ds_out = regridder(ds_in[var_name])
+        ds_gcm = ds_out.to_dataset(name=var_name)
+        # keep attributes of variables and coordinates
+        for field in [var_name, TIME_GCM, PLEV_GCM, LAT_GCM, 
+                      LON_GCM, 'height']:
+            if field in ds_in:
+                ds_gcm[field].attrs = ds_in[field].attrs
+        # keep global attributes
+        ds_gcm.attrs = ds_in.attrs
+
+    #### IMPLEMENTATION WITH XARRAY
+    ##########################################################################
+    ## The results should be identical to XESMF
+    ## except for tiny differences that appear to originate from
+    ## numerical precision.
+    else:
+        #### LATITUDE INTERPOLATION
+        ######################################################################
+        ## make sure latitude is increasing with index
+        if (ds_gcm[LAT_GCM].isel({LAT_GCM:0}).values > 
+            ds_gcm[LAT_GCM].isel({LAT_GCM:-1}).values):
+            if i_debug >= 1:
+                print('Regridding: GCM data has opposite ' +
+                      'order of latitude. Apply reindexing.')
+            # flip latitude dimension
+            ds_gcm = ds_gcm.reindex(
+                    {LAT_GCM:list(reversed(ds_gcm[LAT_GCM]))})
+
+        ## If GCM dataset reaches poles (almost), add a pole grid point
+        ## with the zonal average of the values closest to the pole
+        if np.max(targ_lat.values) + dlat_gcm > 89.9:
+            north = ds_gcm.isel({LAT_GCM:-1})
+            north[LAT_GCM].values = 90
+            north[var_name] = north[var_name].mean(dim=[LON_GCM])
+            ds_gcm = xr.concat([ds_gcm,north], dim=LAT_GCM)
+        if np.min(targ_lat.values) - dlat_gcm < -89.9:
+            south = ds_gcm.isel({LAT_GCM:0})
+            south[LAT_GCM].values = -90
+            south[var_name] = south[var_name].mean(dim=[LON_GCM])
+            ds_gcm = xr.concat([south,ds_gcm], dim=LAT_GCM)
+
+        ## make sure there is no extrapolation to the North and South
+        if ( (np.max(targ_lat.values) > np.max(ds_gcm[LAT_GCM].values)) |
+             (np.min(targ_lat.values) < np.min(ds_gcm[LAT_GCM].values))):
+            print('GCM lat: min {} max {}'.format(
+                            np.min(ds_gcm[LAT_GCM].values),
+                            np.max(ds_gcm[LAT_GCM].values))) 
+            print('ERA5 lat: min {} max {}'.format(
+                            np.min(targ_lat.values),
+                            np.max(targ_lat.values))) 
+            raise ValueError('ERA5 dataset extends further North or South ' +
+                              'than GCM dataset!. Perhaps consider using ' +
+                              'ERA5 on a subdomain only if global coverage ' +
+                              'is not required?') 
+
+        ## run interpolation
+        ds_gcm = ds_gcm.interp({LAT_GCM:targ_lat})
+
+        #### LONGITUDE INTERPOLATION
+        ######################################################################
+        ### Implement periodic boundary conditions
+        ### This is also a check and fix for a different longitude format 
+        ### e.g. GCM -180:180 while ERA5 0:360 (or vice versa)
+        if periodic_lon:
+            if np.max(targ_lon.values) > np.max(ds_gcm[LON_GCM].values):
+                lon_above = ds_gcm.assign_coords(
+                            {LON_GCM:ds_gcm[LON_GCM] + 360})
+                ds_gcm = xr.concat([ds_gcm, lon_above], dim=LON_GCM)
+            if np.min(targ_lon.values) < np.min(ds_gcm[LON_GCM].values):
+                lon_below = ds_gcm.assign_coords(
+                            {LON_GCM:ds_gcm[LON_GCM] - 360})
+                ds_gcm = xr.concat([lon_below, ds_gcm], dim=LON_GCM)
+
+        ## make sure there is no extrapolation to the East and West
+        if ( (np.max(targ_lon.values) > np.max(ds_gcm[LON_GCM].values)) |
+             (np.min(targ_lon.values) < np.min(ds_gcm[LON_GCM].values))):
+            print('GCM lon: min {} max {}'.format(
+                            np.min(ds_gcm[LON_GCM].values),
+                            np.max(ds_gcm[LON_GCM].values))) 
+            print('ERA5 lon: min {} max {}'.format(
+                            np.min(targ_lon.values),
+                            np.max(targ_lon.values))) 
+            raise ValueError('ERA5 dataset extends further East or West ' +
+                              'than GCM dataset!. Perhaps consider using ' +
+                              'ERA5 on a subdomain only if global coverage ' +
+                              'is not required?') 
+
+        ## run interpolation
+        ds_gcm = ds_gcm.interp({LON_GCM:targ_lon})
+
+    ## test for NaN
+    if np.sum(np.isnan(ds_gcm[var_name])).values > 0:
+        raise ValueError('NaN in GCM dataset after interpolation.')
+
+    return(ds_gcm)

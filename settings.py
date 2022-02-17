@@ -35,7 +35,12 @@ era5_file_name_base = 'caf{:%Y%m%d%H}.nc'
 
 ### REGRIDDING
 ####################################
-i_use_xesmf_regridding = 0
+# depending on whether the xesmf pacakge is installed, it can be used
+# for interpolation. Else, an xarray-based method is used.
+# the latter should be identical to XESMF
+# except for tiny differences that appear to originate from
+# numerical precision
+i_use_xesmf_regridding = 1
 
 
 ### SURFACE PRESSURE ADJUSTMENT SETTINGS 

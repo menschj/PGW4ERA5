@@ -123,4 +123,3 @@ if __name__ == "__main__":
 
     # run in parallel if args.n_par > 1
     IMP.run(test_delta, fargs, step_args)
-
