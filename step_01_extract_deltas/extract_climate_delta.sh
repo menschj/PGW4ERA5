@@ -12,28 +12,31 @@ out_base_dir=/net/o3/hymet_nobackup/heimc/data/pgw
 gcm_name=MPI-ESM1-2-HR
 
 table_ID=Amon
-table_ID=Emon
-table_ID=day
+#table_ID=Emon
+#table_ID=day
 
 cdo_agg_command=ymonmean
 cdo_agg_command=ydaymean
 
 model=MPI-ESM1-2-HR
 experiments=(historical ssp585)
+
 i_extract_vars=1
 i_convert_hus_to_hur=0
 i_compute_delta=1
 
+#subsel_command=-sellonlatbox,-74,40,-45,35
+box=-180,180,-90,90
+
 # Amon
 var_names=(tas hurs ps ua va ta hur zg)
-var_names=(tas)
+#var_names=(tas)
 ### Emon
 #var_names=(ua va ta hus zg)
 #var_names=(hus)
 ## compute delta separately
 #var_names=(hur)
 
-box=-74,40,-45,35
 ##############################################################################
 
 

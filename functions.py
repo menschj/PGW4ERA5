@@ -61,7 +61,9 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
     Integrate ERA5 geopotential from surfce to a reference pressure
     level p_ref.
     """
-    # take log half-level pressure difference (located at full levels)
+    ## take log half-level pressure difference (located at full levels)
+    # make sure pressure is not exactly zero because of ln
+    pa_hl = pa_hl.where(pa_hl > 0, 0.0001)
     dlnpa = np.log(pa_hl).diff(
                 dim=VERT_HL_ERA, 
                 label='lower').rename({VERT_HL_ERA:VERT_ERA})
@@ -165,29 +167,30 @@ def load_delta(delta_inp_path, var_name, era_date_time,
     return(delta)
 
 
-### TODO DEBUG START
-#def load_delta_old(delta_inp_path, var_name, era_date_time, 
-#               delta_date_time=None, name_base='{}_delta.nc'):
-#    """
-#    Load a climate delta and if delta_date_time is given,
-#    interpolate it to that date and time of the year.
-#    """
-#
-#    def hour_of_year(dt): 
-#        beginning_of_year = datetime(dt.year, 1, 1, tzinfo=dt.tzinfo)
-#        return(int((dt - beginning_of_year).total_seconds() // 3600))
-#    name_base = name_base.split('.nc')[0] + '_{:05d}.nc'
-#    diff_time_step = int(hour_of_year(delta_date_time)/3)
-#    delta = xr.open_dataset(os.path.join(delta_inp_path,
-#            name_base.format(var_name, diff_time_step)))[var_name]
-#    # make sure time is in the same format as in laf file
-#    delta['time'] = era_date_time
-#
-#    return(delta)
-### TODO DEBUG STOP
+## TODO DEBUG START
+def load_delta_old(delta_inp_path, var_name, era_date_time, 
+               delta_date_time=None, name_base='{}_delta.nc'):
+    """
+    Load a climate delta and if delta_date_time is given,
+    interpolate it to that date and time of the year.
+    """
+
+    def hour_of_year(dt): 
+        beginning_of_year = datetime(dt.year, 1, 1, tzinfo=dt.tzinfo)
+        return(int((dt - beginning_of_year).total_seconds() // 3600))
+    name_base = name_base.split('.nc')[0] + '_{:05d}.nc'
+    diff_time_step = int(hour_of_year(delta_date_time)/3)
+    delta = xr.open_dataset(os.path.join(delta_inp_path,
+            name_base.format(var_name, diff_time_step)))[var_name]
+    # make sure time is in the same format as in laf file
+    delta['time'] = era_date_time
+
+    return(delta)
+## TODO DEBUG STOP
 
 def load_delta_interp(delta_inp_path, var_name, target_P,
-                        era_date_time, delta_date_time):
+                    era_date_time, delta_date_time,
+                    ignore_top_pressure_error=False):
     """
     Does the following:
         - load a climate delta
@@ -214,7 +217,8 @@ def load_delta_interp(delta_inp_path, var_name, target_P,
         ps_hist = None
 
     # interpolate climate delta onto ERA5 model levels
-    delta = vert_interp_delta(delta, target_P, delta_sfc, ps_hist)
+    delta = vert_interp_delta(delta, target_P, delta_sfc, ps_hist,
+                            ignore_top_pressure_error)
     return(delta)
 
 
@@ -244,7 +248,8 @@ def replace_delta_sfc(source_P, ps_hist, delta, delta_sfc):
     return(out_source_P, out_delta)
 
 
-def vert_interp_delta(delta, target_P, delta_sfc=None, ps_hist=None):
+def vert_interp_delta(delta, target_P, delta_sfc=None, ps_hist=None,
+                       ignore_top_pressure_error=False):
     """
     Vertically interpolate climate delta onto ERA5 model levels.
     If delta_sfc and ps_hist are given, surface values will
@@ -289,9 +294,18 @@ def vert_interp_delta(delta, target_P, delta_sfc=None, ps_hist=None):
         raise ValueError()
 
     # make sure there is no extrapolation at the model top
+    # unless these levels are anyways not important for the user
+    # and she/he manually sets ignore_top_pressure_error=True
     if np.min(target_P) < np.min(source_P):
-        raise ValueError('ERA5 top pressure is lower than '+
-                         'climate delta top pressure!')
+        if not ignore_top_pressure_error:
+            raise ValueError('ERA5 top pressure is lower than '+
+                             'climate delta top pressure. If you are ' +
+                             'certain that you do not need the data ' +
+                             'beyond to upper-most pressure level of the ' +
+                             'climate delta, you can set the flag ' +
+                             '--ignore_top_pressure_error and re-run the ' +
+                             'script.')
+                             
 
     # run interpolation
     delta_interp = interp_logp_3d(delta, source_P, target_P,

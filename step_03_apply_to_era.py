@@ -25,16 +25,21 @@ from constants import CON_G, CON_RD
 from parallel import IterMP
 from settings import (
     i_debug,
-    i_reinterp,
     era5_file_name_base,
     var_name_map,
     TIME_ERA, VERT_ERA, VERT_HL_ERA, LON_ERA, LAT_ERA, SOIL_HL_ERA,
-    TIME_GCM, 
+    TIME_GCM, PLEV_GCM,
+    i_reinterp,
+    p_ref_inp,
+    thresh_phi_ref_max_error,
+    max_n_iter,
+    adj_factor,
     )
 ##############################################################################
 
 def pgw_for_era5(inp_era_file_path, out_era_file_path,
-                delta_input_dir, era_step_dt):
+                delta_input_dir, era_step_dt,
+                ignore_top_pressure_error):
     """
     ##########################################################################
 
@@ -124,10 +129,10 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
             laffile.ak.isel({VERT_HL_ERA:range(len(laffile.level1)-1)}).values
         )
         bkm = (
-            0.5 * laffile.ak.diff(
+            0.5 * laffile.bk.diff(
             dim=VERT_HL_ERA, 
             label='lower').rename({VERT_HL_ERA:VERT_ERA}) + 
-            laffile.ak.isel({VERT_HL_ERA:range(len(laffile.level1)-1)}).values
+            laffile.bk.isel({VERT_HL_ERA:range(len(laffile.level1)-1)}).values
         )
     # pressure on full levels
     pa_era = (akm + laffile[var_name_map['ps']] * bkm).transpose(
@@ -182,7 +187,8 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
             ## interpolate climate deltas to ERA5 model levels
             ## use ERA climate state
             delta_var = load_delta_interp(delta_input_dir,
-                    var_name, pa_era, laffile[TIME_ERA], era_step_dt)
+                    var_name, pa_era, laffile[TIME_ERA], era_step_dt,
+                    ignore_top_pressure_error)
             deltas[var_name] = delta_var
 
             ## compute PGW climate state variables
@@ -217,7 +223,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         ps_pgw = laffile[var_name_map['ps']] + delta_ps
 
         # recompute pressure on full and half levels
-        pa_pgw = (laffile.akm + ps_pgw * laffile.bkm).transpose(
+        pa_pgw = (akm + ps_pgw * bkm).transpose(
                     TIME_ERA, VERT_ERA, LAT_ERA, LON_ERA)
         pa_hl_pgw = (laffile.ak + ps_pgw * laffile.bk).transpose(
                     TIME_ERA, VERT_HL_ERA, LAT_ERA, LON_ERA)
@@ -233,7 +239,8 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                                 pa_era, pa_pgw, extrapolate='constant')
                 deltas[var_name] = load_delta_interp(delta_input_dir,
                                                 var_name, pa_pgw,
-                                                laffile[TIME_ERA], era_step_dt)
+                                                laffile[TIME_ERA], era_step_dt,
+                                                ignore_top_pressure_error)
                 vars_pgw[var_name] = vars_era[var_name] + deltas[var_name]
 
             # convert relative humidity to speicifc humidity in pgw
@@ -245,7 +252,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         if p_ref_inp is None:
             # get GCM pressure levels as candidates for reference pressure
             p_ref_opts = load_delta(delta_input_dir, 'zg',
-                                laffile[TIME_ERA], era_step_dt).plev
+                                laffile[TIME_ERA], era_step_dt)[PLEV_GCM]
             # surface pressure in ERA and PGW climate states
             p_sfc_era = pa_hl_era.sel(
                         {VERT_HL_ERA:np.max(pa_hl_era[VERT_HL_ERA])})
@@ -259,7 +266,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
             # determine local reference pressure
             p_ref = xr.apply_ufunc(determine_p_ref, p_sfc_era, p_sfc_pgw, 
                     p_ref_opts, p_ref_last,
-                    input_core_dims=[[],[],['plev'],[]],
+                    input_core_dims=[[],[],[PLEV_GCM],[]],
                     vectorize=True)
             if VERT_HL_ERA in p_ref.coords:
                 del p_ref[VERT_HL_ERA]
@@ -281,17 +288,18 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         ## load climate delta for reference pressure level
         climate_delta_phi_ref = load_delta(delta_input_dir, 'zg',
                             laffile[TIME_ERA], era_step_dt) * CON_G
-        climate_delta_phi_ref = climate_delta_phi_ref.sel(plev=p_ref)
-        del climate_delta_phi_ref['plev']
+        climate_delta_phi_ref = climate_delta_phi_ref.sel({PLEV_GCM:p_ref})
+        del climate_delta_phi_ref[PLEV_GCM]
 
         # error in future geopotential
         phi_ref_error = delta_phi_ref - climate_delta_phi_ref
 
         adj_ps = - adj_factor * ps_pgw / (
                 CON_RD * 
-                vars_pgw['ta'].sel(level=np.max(laffile.level))
+                vars_pgw['ta'].sel({VERT_ERA:np.max(laffile[VERT_ERA])})
             ) * phi_ref_error
-        del adj_ps['level']
+        if VERT_ERA in adj_ps.coords:
+            del adj_ps[VERT_ERA]
 
         phi_ref_max_error = np.abs(phi_ref_error).max().values
         if i_debug >= 2:
@@ -305,11 +313,11 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                   'for file {}.'.format(inp_era_file_path))
 
 
-    ### TODO DEBUG TESTING
+    #### TODO DEBUG TESTING
     #dps = ps_pgw-laffile.PS 
     #dps.to_netcdf(os.path.join(Path(out_era_file_path).parents[0], 
     #        'delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref_inp, era_step_dt)))
-    ### TODO DEBUG TESTING
+    #### TODO DEBUG TESTING
 
     ## If re-interpolation is enabled, interpolate climate deltas for
     ## ua and va onto final PGW climate state ERA5 model levels.
@@ -321,7 +329,8 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                             pa_era, pa_pgw, extrapolate='constant')
             dvar = load_delta_interp(delta_input_dir,
                     var_name, pa_pgw,
-                    laffile[TIME_ERA], era_step_dt)
+                    laffile[TIME_ERA], era_step_dt,
+                    ignore_top_pressure_error)
             vars_pgw[var_name] = var_era + dvar
 
 
@@ -352,17 +361,25 @@ if __name__ == "__main__":
                     'Perturb ERA5 with PGW climate deltas.')
 
     # first bc step to compute 
-    parser.add_argument('-f', '--first_era_step', type=str, default='2006080200')
+    parser.add_argument('-f', '--first_era_step', type=str,
+            default='2006080200',
+            help='Date of first ERA5 time step to process. Format should ' +
+            'be YYYYMMDDHH.')
 
     # last bc step to compute 
-    parser.add_argument('-l', '--last_era_step', type=str, default='2006080300')
+    parser.add_argument('-l', '--last_era_step', type=str,
+            default='2006080300',
+            help='Date of last ERA5 time step to process. Format should ' +
+            'be YYYYMMDDHH.')
 
     # delta hour increments
-    parser.add_argument('-H', '--hour_inc_step', type=int, default=3)
+    parser.add_argument('-H', '--hour_inc_step', type=int, default=3,
+            help='Hourly increment of the ERA5 time steps to process '+
+            'between --first_era_step and --last_era_step.')
 
     # input era5 directory
     parser.add_argument('-i', '--input_dir', type=str, default=None,
-            help='Directory with ERA5 input files to add deltas.')
+            help='Directory with ERA5 input files to process.')
 
     # output era5 directory
     parser.add_argument('-o', '--output_dir', type=str, default=None,
@@ -373,7 +390,7 @@ if __name__ == "__main__":
             help='Directory with GCM climate deltas to be used. ' +
             'This directory should have a climate delta for ta,hur,' +
             'ua,va,zg,tas,hurs (e.g. ta_delta.nc), as well as the ' +
-            'ps value from the ERA climatology (e.g. ps_historical). ' +
+            'ps value from the ERA climatology (e.g. ps_historical.nc). ' +
             'All files have to be horizontally remapped to the grid of ' +
             'the ERA5 files used (see step_02_preproc_deltas.py).')
 
@@ -382,6 +399,16 @@ if __name__ == "__main__":
             help='Number of parallel tasks. Parallelization is done ' +
             'on the level of individual ERA5 files being processed at ' +
             'the same time.')
+
+    # flag to ignore the error from to pressure extrapolation at the model top
+    parser.add_argument('-t', '--ignore_top_pressure_error',
+            action='store_true',
+            help='Flag to ignore an error due to pressure ' +
+            'extrapolation at the model top if climate deltas reach ' +
+            'up less far than ERA5. This should only be done if data ' +
+            'is not used beyond the upper-most level of the climate ' +
+            'deltas.')
+
 
     args = parser.parse_args()
     ##########################################################################
@@ -407,7 +434,10 @@ if __name__ == "__main__":
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     IMP = IterMP(njobs=args.n_par, run_async=True)
-    fargs = {'delta_input_dir':args.delta_input_dir}
+    fargs = dict(
+        delta_input_dir = args.delta_input_dir,
+        ignore_top_pressure_error = args.ignore_top_pressure_error,
+    )
     step_args = []
 
     ##########################################################################
@@ -421,10 +451,11 @@ if __name__ == "__main__":
         out_era_file_path = os.path.join(args.output_dir, 
                 era5_file_name_base.format(era_step_dt))
 
-        step_args.append({
-            'inp_era_file_path':inp_era_file_path,
-            'out_era_file_path':out_era_file_path,
-            'era_step_dt':era_step_dt}
+        step_args.append(dict(
+            inp_era_file_path = inp_era_file_path,
+            out_era_file_path = out_era_file_path,
+            era_step_dt = era_step_dt
+            )
         )
 
     # run in parallel if args.n_par > 1

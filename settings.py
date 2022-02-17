@@ -10,9 +10,13 @@ authors		    Before 2022: original developments by Roman Brogli
 
 ### GENERAL SETTINGS
 ##############################################################################
+# debug output level
+i_debug = 2 # [0-2]
+
 # File naming convention for GCM climate deltas
 # ({} is placeholder for variable name).
 climate_delta_file_name_base = '{}_delta.nc'
+
 # File naming convention for GCM files for the ERA climatology
 # ({} is placeholder for variable name).
 # This is required exclusively for the surface pressure (ps).
@@ -22,14 +26,20 @@ era_climate_file_name_base = '{}_historical.nc'
 era5_file_name_base = 'cas{:%Y%m%d%H}0000.nc'
 era5_file_name_base = 'caf{:%Y%m%d%H}.nc'
 
-### SMOOTHING AND INTERPOLATE
+
+### 02 PREPROCESS DELTAS 
 ##############################################################################
+
+### SMOOTHING
+####################################
+
+### REGRIDDING
+####################################
+i_use_xesmf_regridding = 0
 
 
 ### SURFACE PRESSURE ADJUSTMENT SETTINGS 
 ##########################################################################
-# debug output level
-i_debug = 2 # [0-2]
 
 ### SURFACE PRESSURE ADJUSTMENT SETTINGS 
 ##########################################################################
