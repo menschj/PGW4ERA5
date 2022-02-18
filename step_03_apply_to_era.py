@@ -315,10 +315,10 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                   'for file {}.'.format(inp_era_file_path))
 
 
-    #### TODO DEBUG TESTING
-    #dps = ps_pgw-laffile.PS 
-    #dps.to_netcdf(os.path.join(Path(out_era_file_path).parents[0], 
-    #        'delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref_inp, era_step_dt)))
+    #### TODO DEBUG TESTING (write out computed delta_ps)
+    dps = ps_pgw-laffile.PS 
+    dps.to_netcdf(os.path.join(Path(out_era_file_path).parents[0], 
+            'delta_ps_{}_{:%Y%m%d%H}.nc'.format(p_ref_inp, era_step_dt)))
     #### TODO DEBUG TESTING
 
     ## If re-interpolation is enabled, interpolate climate deltas for

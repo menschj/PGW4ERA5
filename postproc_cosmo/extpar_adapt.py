@@ -1,6 +1,6 @@
 import argparse
 from netCDF4 import Dataset
-from base.functions import load_delta
+from functions import load_delta
 
 
 var_name_map = {
@@ -19,11 +19,8 @@ def extpar_adapt(ext_file_path, delta_inp_path):
     print('update {}'.format(var_name))
 
     name_base='{}_delta.nc'
-    delta_tas = load_delta(delta_inp_path, var_name, None, 
-                            None, None)
-
-    ## TODO: debug for too small domain 
-    #delta_tas = delta_tas.where(~np.isnan(delta_tas), 0)
+    delta_tas = load_delta(delta_inp_path, var_name, None)
+    print(delta_tas)
 
     ## Make sure dimensions are exactly the same.
     ## There are numerical differences between CDO remapped objects
@@ -37,6 +34,7 @@ def extpar_adapt(ext_file_path, delta_inp_path):
     ext_file['T_CL'][:] += delta_tas_clim.values.squeeze()
 
     ext_file.close()
+    print('Done.')
 
 
 
@@ -51,12 +49,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description =
                     'Perturb Extpar soil temperature climatology with PGW climate delta.')
     # extpar file to modify
-    parser.add_argument('extpar_file_path', type=str)
+    parser.add_argument('extpar_file_path', type=str,
+            help='Path to extpar file to modify T_CL.')
+
+    # climate delta directory (already remapped to ERA5 grid)
+    parser.add_argument('-d', '--delta_input_dir', type=str, default=None,
+            help='Directory with GCM climate deltas to be used. ' +
+            'This directory should have a climate delta for tas ' +
+            'already horizontally remapped to the grid of ' +
+            'the extpar file (see step_02_preproc_deltas.py).')
     args = parser.parse_args()
     print(args)
 
-    delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded/Emon/extpar_SA_3'
-    #delta_inp_path = '/scratch/snx3000/heimc/pgw/regridded/Amon/MPI-ESM1-2-HR'
-
-    extpar_adapt(args.extpar_file_path, delta_inp_path)
+    extpar_adapt(args.extpar_file_path, args.delta_input_dir)
 

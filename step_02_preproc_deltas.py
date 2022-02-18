@@ -38,7 +38,8 @@ parser.add_argument('processing_step', type=str,
             'climate deltas this is not necessary.] ' +
             'regridding: [If the climate deltas are not on the same ' +
             'horizontal grid as ERA5, they can be regridded here. '+
-            'WARNING: The script assumes regular lat/lon grid for '+
+            'WARNING: The script assumes regular (thus non-rotated) ' +
+            'lat/lon grid for ' +
             'input (climate delta) and output (ERA5)!]')
 
 # variable(s) to process
