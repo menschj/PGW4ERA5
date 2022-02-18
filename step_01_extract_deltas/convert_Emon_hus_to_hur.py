@@ -93,7 +93,7 @@ if __name__ == '__main__':
 
     for plev in hur.plev.values:
         if plev not in amon_hur.plev.values:
-            #print(plev)
+            print('{}: interpolate'.format(plev))
             plev_below = amon_hur.plev.where((amon_hur.plev-plev) > 0, np.nan)
             plev_below = amon_hur.plev.isel(plev=plev_below.argmin(dim='plev').values).values
 
@@ -130,6 +130,7 @@ if __name__ == '__main__':
             hur_interp.loc[dict(plev=plev)] = interp
             #quit()
         else:
+            print('{}: take from Amon'.format(plev))
             hur_interp.loc[dict(plev=plev)] = amon_hur.sel(plev=plev)
     #quit()
 

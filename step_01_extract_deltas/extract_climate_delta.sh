@@ -1,26 +1,30 @@
 #!/bin/bash
 ##############################################################################
-# Template script to extract climate deltas from CMIP GCMs.
-# Computes climatologies and the climate deltas for specific CMIP 
-# experiments and members.
-# The script only serves as inspiration for the extraction of the climate
-# deltas and it is not generally valid and has to be adjusted 
-# for different GCMs, experiments, table_IDs and climatology periods.
+## Template script to extract climate deltas from CMIP GCMs.
+## Computes climatologies and the climate deltas for specific CMIP 
+## experiments and members.
+## The script only serves as inspiration for the extraction of the climate
+## deltas and it is not generally valid and has to be adjusted 
+## for specific use case.
 
 ##### IMPORTANT NOTES FOR Emon DATA USERS:
 ## FIRST
 ## hur is not available in the Emon output and has to be computed from hus.
-## Since this is not excat because it matters if hur is computed from hus
+## This is not excat because it matters if hur is computed from hus
 ## on the model levels every time the GCM writes an output or whether it is
-## computed afterwards. Therefore, the hur is used from the coarse
-## resolution Amon output but vertically interpolated to the higher resolution
-## of Emon using information from the hur computed on using Emon hus and ta
+## computed on the monthly-aggregated output on pressure levels.
+## Therefore, the hur is used from the coarse resolution output group Amon.
+## However, the Amon output is vertically interpolated to the higher resolution
+## of Emon using information from the computed Emon hur=f(hus,ta)
 ## data. This helps to do a "better informed" vertical interpolation of the
 ## coarse Amon hur to the higher resolved Emon grid.
-## This steps are done by the 
+## This steps are done by the convert_Emon_hus_to_hur.py script which is
+## called automatically in the current implementation.
+## Consequently, Amon must have been exctracted before Emon can be!
 ## SECOND
-## After computing hur for Emon, the delta will have to still be computed
+## After computing hur for Emon, the delta still has to be computed
 ## by running the script again only for var_names=(hur).
+## (turn off i_exctract_vars but keep i_compute_delta)
 ## THIRD
 ## The Emon data does not reach up as far as the Amon data
 ## Thus, after completing this script, run add_Emon_model_top.sh
@@ -85,15 +89,11 @@ else
 fi
 
 ## subdomain for which to extract GCM data
-## should be either global (-180,180,-90,90)
+## should be either global (0,360,-90,90)
 ## or anything larger than ERA5 subdomain
 ## except for storage and performance reasons, there is no benefit of
 ## using a subdomain.
-## Depending on the GCM, either the format lon = -180,180 or 
-## lon = 0,360 has to be used. Make sure to check in the output which 
-## one is correct.
-box=-180,180,-90,90 # for the MPI-ESM1-2-HR model
-#box=0,360,-90,90
+box=0,360,-90,90
 # subdomain
 #box=-74,40,-45,35
 #box=-90,40,-45,50
@@ -137,23 +137,33 @@ for var_name in ${var_names[@]}; do
 
             ## compute ERA climatology
             if [[ "$experiment" == "$era_climate_experiment" ]]; then
-                cdo $cdo_agg_command \
-                    -sellonlatbox,$box \
+                # extract full time series
+                cdo sellonlatbox,$box \
                     -selyear,1985/2014 \
                     -cat \
                     $inp_dir/${var_name}_${file_name_base}_19[8-9]*.nc \
                     $inp_dir/${var_name}_${file_name_base}_20[0-1]*.nc \
-                    $out_dir/${var_name}_${experiment}.nc
+                    $out_dir/${var_name}_${experiment}_full.nc
 
             ## compute future experiment climatology
             elif [[ "$experiment" == "$future_climate_experiment" ]]; then
-                cdo $cdo_agg_command \
-                    -sellonlatbox,$box \
+                # extract full time series
+                cdo sellonlatbox,$box \
                     -selyear,2070/2099 \
                     -cat \
                     $inp_dir/${var_name}_${file_name_base}_20[6-9]*.nc \
-                    $out_dir/${var_name}_${experiment}.nc
+                    $out_dir/${var_name}_${experiment}_full.nc
             fi
+
+            # aggregate to yearly monthly/daily means
+            # in principal this could be done directly during extraction
+            # step above. However, for Emon computation of hur from hus
+            # this should be done on the basis of monthly values not
+            # with the mean annual cycle. Due to this, the full time
+            # series are stored as well.
+            cdo $cdo_agg_command \
+                $out_dir/${var_name}_${experiment}_full.nc \
+                $out_dir/${var_name}_${experiment}.nc
         fi
 
         ## convert hus to hur if required
@@ -164,10 +174,15 @@ for var_name in ${var_names[@]}; do
                 Amon_out_dir=$out_base_dir/Amon/$gcm_name
 
                 python convert_Emon_hus_to_hur.py  \
-                    $out_dir/hus_${experiment}.nc \
-                    $out_dir/ta_${experiment}.nc \
-                    $out_dir/hur_${experiment}.nc \
-                    -a $Amon_out_dir/hur_${experiment}.nc
+                    $out_dir/hus_${experiment}_full.nc \
+                    $out_dir/ta_${experiment}_full.nc \
+                    $out_dir/hur_${experiment}_full.nc \
+                    -a $Amon_out_dir/hur_${experiment}_full.nc
+                    
+                # aggregate to yearly monthly/daily means
+                cdo $cdo_agg_command \
+                    $out_dir/hur_${experiment}_full.nc \
+                    $out_dir/hur_${experiment}.nc
             fi
         fi
 
