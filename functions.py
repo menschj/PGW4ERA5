@@ -622,9 +622,10 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
                   np.min(ds_gcm[LON_GCM].values)) >= 359.9:
         periodic_lon = True
         if i_debug >= 1:
-            print('Regridding: Use periodic boundary conditions as GCM ' +
-                   'data appears to be periodic in longitudinal ' +
-                   'direction.')
+            print('Regridding: Use periodic boundary conditions for GCM ' +
+                    'input data as it ' +
+                    'appears to be periodic in longitudinal ' +
+                    'direction.')
     else:
         periodic_lon = False
 

@@ -3,7 +3,7 @@
 """
 description     PGW for ERA5 main routine to update ERA5 files with climate
                 deltas to transition from ERA climate to PGW climate.
-authors		    Before 2022: original developments by Roman Brogli
+authors		Before 2022: original developments by Roman Brogli
                 Since 2022:  upgrade to PGW for ERA5 by Christoph Heim 
 """
 ##############################################################################
@@ -105,7 +105,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
 
     """
     if i_debug >= 0:
-        print('Start working on file {}'.format(inp_era_file_path))
+        print('Start working on input file {}'.format(inp_era_file_path))
 
     # open data set
     laffile = xr.open_dataset(inp_era_file_path, decode_cf=False)
@@ -208,6 +208,8 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     #########################################################################
     ### UPDATE SURFACE PRESSURE USING ITERATIVE PROCEDURE
     #########################################################################
+    if i_debug >= 2:
+        print('###### Start with iterative surface pressure adjustment.')
     # change in surface pressure between ERA and PGW climate states
     delta_ps = xr.zeros_like(laffile[var_name_map['ps']])
     # increment to adjust delta_ps with each iteration
