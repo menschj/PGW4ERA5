@@ -89,7 +89,11 @@ fi
 ## or anything larger than ERA5 subdomain
 ## except for storage and performance reasons, there is no benefit of
 ## using a subdomain.
-box=-180,180,-90,90
+## Depending on the GCM, either the format lon = -180,180 or 
+## lon = 0,360 has to be used. Make sure to check in the output which 
+## one is correct.
+box=-180,180,-90,90 # for the MPI-ESM1-2-HR model
+#box=0,360,-90,90
 # subdomain
 #box=-74,40,-45,35
 #box=-90,40,-45,50
@@ -135,19 +139,19 @@ for var_name in ${var_names[@]}; do
             if [[ "$experiment" == "$era_climate_experiment" ]]; then
                 cdo $cdo_agg_command \
                     -sellonlatbox,$box \
+                    -selyear,1985/2014 \
                     -cat \
-                    $inp_dir/${var_name}_${file_name_base}_198[5-9]*.nc \
-                    $inp_dir/${var_name}_${file_name_base}_199*.nc \
-                    $inp_dir/${var_name}_${file_name_base}_200*.nc \
-                    $inp_dir/${var_name}_${file_name_base}_201[0-4]*.nc \
+                    $inp_dir/${var_name}_${file_name_base}_19[8-9]*.nc \
+                    $inp_dir/${var_name}_${file_name_base}_20[0-1]*.nc \
                     $out_dir/${var_name}_${experiment}.nc
 
             ## compute future experiment climatology
             elif [[ "$experiment" == "$future_climate_experiment" ]]; then
                 cdo $cdo_agg_command \
                     -sellonlatbox,$box \
+                    -selyear,2070/2099 \
                     -cat \
-                    $inp_dir/${var_name}_${file_name_base}_20[7-9]*.nc \
+                    $inp_dir/${var_name}_${file_name_base}_20[6-9]*.nc \
                     $out_dir/${var_name}_${experiment}.nc
             fi
         fi
