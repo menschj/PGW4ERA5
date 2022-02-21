@@ -24,10 +24,16 @@ from settings import (
 ## input arguments
 parser = argparse.ArgumentParser(description =
             'PGW for ERA5: Preprocess climate deltas before adding ' +
-            'them to ERA5. The main routine (pgw_for_era5.py) requires ' +
+            'them to ERA5. The main routine (step_03_apply_to_era.py) ' +
+            'requires ' +
             'climate deltas for [ta,hur,ua,va,zg,hurs,tas], as well ' +
-            'as the ERA climatological value of ps. Note that that some ' +
-            'additional settings can be made in settings.py.')
+            'as the ERA climatological value of ps. The script should thus ' +
+            'be run for variables ps,ta,hur,ua,va,zg,hurs,tas and it will ' +
+            'automatically look for the file ' +
+            'ps_$era_climate_file_name_base.nc ' +
+            'and e.g. ta_$climate_delta_file_name_base.nc, where ' +
+            '$era_climate_file_name_base and $climate_delta_file_name_base ' +
+            'can be set in settings.py, among other things.')
 
 # processing step to perform during script execution
 parser.add_argument('processing_step', type=str, 
@@ -49,12 +55,13 @@ parser.add_argument('var_names', type=str,
 
 # input directory
 parser.add_argument('-i', '--input_dir', type=str,
-            help='Directory with input files for selected ' +
+            help='Directory with input climate delta ' +
+            'files for selected ' +
             'processing step.')
 
 # output directory
 parser.add_argument('-o', '--output_dir', type=str,
-            help='Directory where output files of selected ' +
+            help='Directory where output climate delta files of selected ' +
             'processing step should be stored.')
 
 # target ERA5 example file to take grid information
