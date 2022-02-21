@@ -13,16 +13,6 @@
 source ~/phd_scripts/load_modules_daint.sh
 echo -e "$SLURM_JOB_NAME started on $(date):\n"
 
-## rename 2D fields
-## NOT NECESSARY ANYMORE!
-#srun -c $SLURM_CPUS_PER_TASK python -u my_rename_variables.py tas
-#srun -c $SLURM_CPUS_PER_TASK python -u my_rename_variables.py hurs
-#srun -c $SLURM_CPUS_PER_TASK python -u my_rename_variables.py hurs,tas
-
-
-### MANUALLY
-############################################################
-############################################################
 
 ### perpare laf file
 ############################################################

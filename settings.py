@@ -50,7 +50,9 @@ i_use_xesmf_regridding = 0
 ##########################################################################
 # re-interpolation turned on/off
 i_reinterp = 0
-# reference pressure level (None is stronlgy recommended)
+# reference pressure level
+# if set to None, the reference pressure level is chosen locally, which
+# is strongly recommended.
 #p_ref_inp = 50000
 p_ref_inp = None
 # surface pressure adjustment factor in the iterative routine
