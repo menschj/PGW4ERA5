@@ -18,7 +18,7 @@ from functions import (
     load_delta,
     load_delta_interp,
     integ_geopot,
-    interp_logp_3d,
+    interp_logp_4d,
     determine_p_ref,
     )
 from constants import CON_G, CON_RD
@@ -236,7 +236,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
             # climate deltas onto updated model levels, and
             # compute PGW climate state variables
             for var_name in ['ta', 'hur']:
-                vars_era[var_name] = interp_logp_3d(
+                vars_era[var_name] = interp_logp_4d(
                                 laffile[var_name_map[var_name]], 
                                 pa_era, pa_pgw, extrapolate='constant')
                 deltas[var_name] = load_delta_interp(delta_input_dir,
@@ -327,7 +327,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         for var_name in ['ua', 'va']:
             if i_debug >= 2:
                 print('add {}'.format(var_name))
-            var_era = interp_logp_3d(laffile[var_name_map[var_name]], 
+            var_era = interp_logp_4d(laffile[var_name_map[var_name]], 
                             pa_era, pa_pgw, extrapolate='constant')
             dvar = load_delta_interp(delta_input_dir,
                     var_name, pa_pgw,

@@ -326,37 +326,9 @@ def vert_interp_delta(delta, target_P, delta_sfc=None, ps_hist=None,
                              
 
     # run interpolation
-    delta_interp = interp_logp_3d(delta, source_P, target_P,
+    delta_interp = interp_logp_4d(delta, source_P, target_P,
                         extrapolate='constant')
     return(delta_interp)
-
-
-def interp_logp_3d(var, source_P, targ_P, extrapolate='off'):
-    """
-    Interpolate 3D array in vertical (pressure) dimension using the
-    logarithm of pressure.
-    extrapolate:
-        - off: no extrapolation
-        - linear: linear extrapolation
-        - constant: constant extrapolation
-        - nan: set to nan
-    """
-    if extrapolate not in ['off', 'linear', 'constant', 'nan']:
-        raise ValueError()
-
-    targ = xr.zeros_like(targ_P)
-    tmp = np.zeros_like(targ.values.squeeze())
-    interp_1d_for_latlon(var.values.squeeze(),
-                np.log(source_P.values.squeeze()),
-                np.log(targ_P.squeeze()).values, 
-                tmp,
-                len(targ_P[LAT_ERA]), len(targ_P[LON_ERA]),
-                extrapolate)
-    # TODO: this assumes that there is a time dimension entry in targ
-    # which is not consistent with the remaining input parameters
-    tmp = np.expand_dims(tmp, axis=0)
-    targ.values = tmp
-    return(targ)
 
 
 def interp_logp_4d(var, source_P, targ_P, extrapolate='off',
@@ -429,32 +401,6 @@ def interp_1d_for_timelatlon(orig_array, src_p, targ_p, interp_array,
                 interp_col = interp_extrap_1d(src_p_col, src_val_col, 
                                             targ_p_col, extrapolate)
                 interp_array[time_ind, :, lat_ind, lon_ind] = interp_col
-
-
-@njit()
-def interp_1d_for_latlon(orig_array, src_p, targ_p, interp_array,
-                        nlat, nlon, extrapolate):
-    """
-    Vertical interpolation helper function with numba njit for 
-    fast performance.
-    Loop over lat and lon dimensions and interpolate each column
-    individually
-    extrapolate:
-        - off: no extrapolation
-        - linear: linear extrapolation
-        - constant: constant extrapolation
-        - nan: set to nan
-    """
-    for lat_ind in range(nlat):
-        for lon_ind in range(nlon):
-            src_val_col = orig_array[:, lat_ind, lon_ind]
-            src_p_col = src_p[:, lat_ind, lon_ind]
-            targ_p_col = targ_p[:, lat_ind, lon_ind]
-
-            # call 1D interpolation function for current column
-            interp_col = interp_extrap_1d(src_p_col, src_val_col, 
-                                        targ_p_col, extrapolate)
-            interp_array[:, lat_ind, lon_ind] = interp_col
 
 
 @njit()
