@@ -13,17 +13,6 @@ import xarray as xr
 import matplotlib.pyplot as plt
 ###############################################################################
 
-
-
-
-
-
-
-
-
-
-
-
 def specific_to_relative_humidity(QV, P, T):
     """
     Compute relative humidity from specific humidity.

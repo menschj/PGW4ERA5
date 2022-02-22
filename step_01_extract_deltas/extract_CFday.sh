@@ -60,8 +60,6 @@ table_ID=Amon
 #table_ID=Emon
 ## standard daily output
 #table_ID=day
-### CFMIP daily output
-#table_ID=CFday
 
 
 ## select variables to extract
@@ -71,8 +69,6 @@ elif [[ "$table_ID" == "day" ]]; then
     var_names=(tas hurs ps ua va ta hur zg)
 elif [[ "$table_ID" == "Emon" ]]; then
     var_names=(ua va ta hus zg)
-elif [[ "$table_ID" == "CFday" ]]; then
-    var_names=(ua va ta hur)
 fi
 ## for Emon, compute hur delta separately after 
 ## it has been derived from hus
@@ -100,7 +96,7 @@ fi
 box=0,360,-90,90
 # subdomain
 #box=-74,40,-45,35
-#box=-73,37,-42,34
+#box=-90,40,-45,50
 
 # select appropriate cdo time aggregation command
 # depending if input data is monthly or daily.
@@ -164,7 +160,7 @@ for var_name in ${var_names[@]}; do
             # step above. However, for Emon computation of hur from hus
             # this should be done on the basis of monthly values not
             # with the mean annual cycle. Due to this, the full time
-            # series is stored as well.
+            # series are stored as well.
             cdo $cdo_agg_command \
                 $out_dir/${var_name}_${experiment}_full.nc \
                 $out_dir/${var_name}_${experiment}.nc
@@ -177,7 +173,7 @@ for var_name in ${var_names[@]}; do
 
                 Amon_out_dir=$out_base_dir/Amon/$gcm_name
 
-                python Emon_convert_hus_to_hur.py  \
+                python convert_Emon_hus_to_hur.py  \
                     $out_dir/hus_${experiment}_full.nc \
                     $out_dir/ta_${experiment}_full.nc \
                     $out_dir/hur_${experiment}_full.nc \
