@@ -56,11 +56,11 @@ future_climate_experiment=ssp585
 ## to use
 # standard monthly output
 table_ID=Amon
-## high-resolution monthly data for only very few GCMs
-#table_ID=Emon
-## standard daily output
-#table_ID=day
-### CFMIP daily output
+# high-resolution monthly data for only very few GCMs
+table_ID=Emon
+# standard daily output
+table_ID=day
+## CFMIP daily output
 #table_ID=CFday
 
 
@@ -101,6 +101,7 @@ box=0,360,-90,90
 # subdomain
 #box=-74,40,-45,35
 #box=-73,37,-42,34
+box=315,75,19,82
 
 # select appropriate cdo time aggregation command
 # depending if input data is monthly or daily.
@@ -142,8 +143,9 @@ for var_name in ${var_names[@]}; do
             ## compute ERA climatology
             if [[ "$experiment" == "$era_climate_experiment" ]]; then
                 # extract full time series
+                    #-selyear,1985/2014 \
                 cdo sellonlatbox,$box \
-                    -selyear,1985/2014 \
+                    -selyear,1981/2010 \
                     -cat \
                     $inp_dir/${var_name}_${file_name_base}_19[8-9]*.nc \
                     $inp_dir/${var_name}_${file_name_base}_20[0-1]*.nc \
@@ -152,10 +154,12 @@ for var_name in ${var_names[@]}; do
             ## compute future experiment climatology
             elif [[ "$experiment" == "$future_climate_experiment" ]]; then
                 # extract full time series
+                    #-selyear,2070/2099 \
                 cdo sellonlatbox,$box \
-                    -selyear,2070/2099 \
+                    -selyear,2071/2100 \
                     -cat \
                     $inp_dir/${var_name}_${file_name_base}_20[6-9]*.nc \
+                    $inp_dir/${var_name}_${file_name_base}_21*.nc \
                     $out_dir/${var_name}_${experiment}_full.nc
             fi
 
