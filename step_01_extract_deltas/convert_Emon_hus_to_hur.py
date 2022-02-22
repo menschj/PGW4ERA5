@@ -4,7 +4,6 @@
 description     Convert GCM specific humidity to relative humidity.
 author			Christoph Heim
 date created    08.02.2021
-date changed    14.02.2021
 usage           no args
 """
 ###############################################################################

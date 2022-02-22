@@ -66,20 +66,21 @@ max_n_iter = 10
 
 # dimension names in ERA5 file
 TIME_ERA        = 'time'
-VERT_ERA        = 'level'
-VERT_HL_ERA     = 'level1'
-SOIL_HL_ERA     = 'soil1'
 LON_ERA         = 'lon'
 LAT_ERA         = 'lat'
+LEV_ERA         = 'level'
+HLEV_ERA        = 'level1'
+SOIL_HLEV_ERA   = 'soil1'
 
 # dimension names in GCM
 TIME_GCM        = 'time'
-PLEV_GCM        = 'plev'
 LON_GCM         = 'lon'
 LAT_GCM         = 'lat'
+PLEV_GCM        = 'plev'
+LEV_GCM         = 'lev'
 
-# map from naming convention variable names
-# to variable names in ERA5 files to process.
+# map from CMOR variable names
+# to variable names used in ERA5 files being process.
 var_name_map = {
     # surface geopotential
     'zgs'  :'FIS',
