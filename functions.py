@@ -17,7 +17,7 @@ from settings import (
     i_use_xesmf_regridding,
     era_climate_file_name_base,
     climate_delta_file_name_base,
-    TIME_ERA, VERT_ERA, VERT_HL_ERA, LON_ERA, LAT_ERA,
+    TIME_ERA, LEV_ERA, HLEV_ERA, LON_ERA, LAT_ERA,
     TIME_GCM, PLEV_GCM, LON_GCM, LAT_GCM,
 )
 if i_use_xesmf_regridding:
@@ -74,52 +74,52 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
     # make sure pressure is not exactly zero because of ln
     pa_hl = pa_hl.where(pa_hl > 0, 0.0001)
     dlnpa = np.log(pa_hl).diff(
-                dim=VERT_HL_ERA, 
-                label='lower').rename({VERT_HL_ERA:VERT_ERA})
+                dim=HLEV_ERA, 
+                label='lower').rename({HLEV_ERA:LEV_ERA})
 
     # create geopotential array and fill with surface geopotential
-    phi_hl = zgs.expand_dims(dim={VERT_HL_ERA:level1}).copy()
+    phi_hl = zgs.expand_dims(dim={HLEV_ERA:level1}).copy()
 
     # compute virtual temperature
     tav = ta * (1 + 0.61 * hus)
 
     ## integrate over model half levels
-    for l in sorted(tav[VERT_ERA].values, reverse=True):
+    for l in sorted(tav[LEV_ERA].values, reverse=True):
         # geopotential at full level
-        phi_hl.loc[{VERT_HL_ERA:l}] = (
-                phi_hl.sel({VERT_HL_ERA:l+1}) +
-                (CON_RD * tav.sel({VERT_ERA:l}) * dlnpa.sel({VERT_ERA:l}))
+        phi_hl.loc[{HLEV_ERA:l}] = (
+                phi_hl.sel({HLEV_ERA:l+1}) +
+                (CON_RD * tav.sel({LEV_ERA:l}) * dlnpa.sel({LEV_ERA:l}))
         )
 
             
-    phi_hl = phi_hl.transpose(TIME_ERA, VERT_HL_ERA, LAT_ERA, LON_ERA)
+    phi_hl = phi_hl.transpose(TIME_ERA, HLEV_ERA, LAT_ERA, LON_ERA)
 
     ## integrate from last half level below reference pressure
     ## up to reference pressure
     # determine level below reference pressure
     p_diff = pa_hl - p_ref
     p_diff = p_diff.where(p_diff >= 0, np.nan)
-    ind_ref_star = p_diff.argmin(dim=VERT_HL_ERA)
-    hl_ref_star = p_diff[VERT_HL_ERA].isel({VERT_HL_ERA:ind_ref_star})
+    ind_ref_star = p_diff.argmin(dim=HLEV_ERA)
+    hl_ref_star = p_diff[HLEV_ERA].isel({HLEV_ERA:ind_ref_star})
     # get pressure and geopotential of that level
-    p_ref_star = pa_hl.sel({VERT_HL_ERA:hl_ref_star})
-    phi_ref_star = phi_hl.sel({VERT_HL_ERA:hl_ref_star})
+    p_ref_star = pa_hl.sel({HLEV_ERA:hl_ref_star})
+    phi_ref_star = phi_hl.sel({HLEV_ERA:hl_ref_star})
 
     # finally interpolate geopotential to reference
     # pressure level
     phi_ref = (
             phi_ref_star -
-            (CON_RD * tav.sel({VERT_ERA:hl_ref_star-1})) * 
+            (CON_RD * tav.sel({LEV_ERA:hl_ref_star-1})) * 
             (np.log(p_ref) - np.log(p_ref_star))
     )
 
     # remove multi-dimensional coordinates
-    if VERT_HL_ERA in phi_ref.coords:
-        del phi_ref[VERT_HL_ERA]
-    if VERT_ERA in phi_ref.coords:
-        del phi_ref[VERT_ERA]
+    if HLEV_ERA in phi_ref.coords:
+        del phi_ref[HLEV_ERA]
+    if LEV_ERA in phi_ref.coords:
+        del phi_ref[LEV_ERA]
     if PLEV_GCM in phi_ref.coords:
-        del phi_ref[VERT_ERA]
+        del phi_ref[LEV_ERA]
 
     return(phi_ref)
 
@@ -137,6 +137,15 @@ def load_delta(delta_inp_path, var_name, era_date_time,
     ## full climate delta (either daily or monthly)
     full_delta = xr.open_dataset(os.path.join(delta_inp_path,
                             name_base.format(var_name)))
+
+    ## remove leap year february 29th if in delta
+    leap_day = None
+    for tind,dt64 in enumerate(full_delta.time.values):
+        dt = dt64_to_dt(dt64)
+        if (dt.month == 2) and (dt.day == 29):
+            leap_day = dt64
+    if leap_day is not None:
+        full_delta = full_delta.drop_sel(time=leap_day)
 
     ## if climate delta should be interpolated to a specific time
     if delta_date_time is not None:
@@ -299,7 +308,7 @@ def vert_interp_delta(delta, target_P, delta_sfc=None, ps_hist=None,
         raise ValueError()
     if delta.dims != (TIME_GCM, PLEV_GCM, LAT_GCM, LON_GCM):
         raise ValueError()
-    if target_P.dims != (TIME_ERA, VERT_ERA, LAT_ERA, LON_ERA):
+    if target_P.dims != (TIME_ERA, LEV_ERA, LAT_ERA, LON_ERA):
         raise ValueError()
 
     # make sure there is no extrapolation at the model top
@@ -317,12 +326,13 @@ def vert_interp_delta(delta, target_P, delta_sfc=None, ps_hist=None,
                              
 
     # run interpolation
-    delta_interp = interp_logp_3d(delta, source_P, target_P,
+    delta_interp = interp_logp_4d(delta, source_P, target_P,
                         extrapolate='constant')
     return(delta_interp)
 
 
-def interp_logp_3d(var, source_P, targ_P, extrapolate='off'):
+def interp_logp_4d(var, source_P, targ_P, extrapolate='off',
+                   time_key=None, lat_key=None, lon_key=None):
     """
     Interpolate 3D array in vertical (pressure) dimension using the
     logarithm of pressure.
@@ -330,47 +340,67 @@ def interp_logp_3d(var, source_P, targ_P, extrapolate='off'):
         - off: no extrapolation
         - linear: linear extrapolation
         - constant: constant extrapolation
+        - nan: set to nan
     """
-    if extrapolate not in ['off', 'linear', 'constant']:
-        raise ValueError()
+    if extrapolate not in ['off', 'linear', 'constant', 'nan']:
+        raise ValueError('Invalid input value for "extrapolate"')
+
+    # set default values (ERA5 values) for dimension keys
+    if time_key is None: time_key = TIME_ERA
+    if lat_key is None: lat_key = LAT_ERA
+    if lon_key is None: lon_key = LON_ERA
+
+    #print(var.shape)
+    #print(source_P.shape)
+    #print(targ_P.shape)
+
+    if ( (var.shape[0] != source_P.shape[0]) or
+         (var.shape[0] != targ_P.shape[0])   ):
+         raise ValueError('Time dimension of input files is inconsistent!')
+    if ( (var.shape[2] != source_P.shape[2]) or
+         (var.shape[2] != targ_P.shape[2])   ):
+         raise ValueError('Lat dimension of input files is inconsistent!')
+    if ( (var.shape[3] != source_P.shape[3]) or
+         (var.shape[3] != targ_P.shape[3])   ):
+         raise ValueError('Lon dimension of input files is inconsistent!')
 
     targ = xr.zeros_like(targ_P)
-    tmp = np.zeros_like(targ.values.squeeze())
-    interp_1d_for_latlon(var.values.squeeze(),
-                np.log(source_P.values.squeeze()),
-                np.log(targ_P.squeeze()).values, 
+    tmp = np.zeros_like(targ.values)
+    interp_1d_for_timelatlon(var.values,
+                np.log(source_P).values,
+                np.log(targ_P).values, 
                 tmp,
-                len(targ_P[LAT_ERA]), len(targ_P[LON_ERA]),
+                len(targ_P[time_key]), len(targ_P[lat_key]),    
+                len(targ_P[lon_key]),
                 extrapolate)
-    tmp = np.expand_dims(tmp, axis=0)
     targ.values = tmp
     return(targ)
 
-
-
 @njit()
-def interp_1d_for_latlon(orig_array, src_p, targ_p, interp_array,
-                        nlat, nlon, extrapolate):
+def interp_1d_for_timelatlon(orig_array, src_p, targ_p, interp_array,
+                        ntime, nlat, nlon, extrapolate):
     """
     Vertical interpolation helper function with numba njit for 
     fast performance.
-    Loop over lat and lon dimensions and interpolate each column
+    Loop over time lat and lon dimensions and interpolate each column
     individually
     extrapolate:
         - off: no extrapolation
         - linear: linear extrapolation
         - constant: constant extrapolation
+        - nan: set to nan
     """
-    for lat_ind in range(nlat):
-        for lon_ind in range(nlon):
-            src_val_col = orig_array[:, lat_ind, lon_ind]
-            src_p_col = src_p[:, lat_ind, lon_ind]
-            targ_p_col = targ_p[:, lat_ind, lon_ind]
+    for time_ind in range(ntime):
+        for lat_ind in range(nlat):
+            for lon_ind in range(nlon):
+                src_val_col = orig_array[time_ind, :, lat_ind, lon_ind]
+                src_p_col = src_p[time_ind, :, lat_ind, lon_ind]
+                targ_p_col = targ_p[time_ind, :, lat_ind, lon_ind]
 
-            # call 1D interpolation function for current column
-            interp_col = interp_extrap_1d(src_p_col, src_val_col, 
-                                        targ_p_col, extrapolate)
-            interp_array[:, lat_ind, lon_ind] = interp_col
+                # call 1D interpolation function for current column
+                interp_col = interp_extrap_1d(src_p_col, src_val_col, 
+                                            targ_p_col, extrapolate)
+                interp_array[time_ind, :, lat_ind, lon_ind] = interp_col
 
 
 @njit()
@@ -382,6 +412,7 @@ def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
         - off: no extrapolation
         - linear: linear extrapolation
         - constant: constant extrapolation
+        - nan: set to nan
     """
     targ_y = np.zeros(len(targ_x))
     for ti in range(len(targ_x)):
@@ -430,13 +461,16 @@ def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
                              'out of bounds.')
 
         # interpolate/extrapolate values
-        if i1 == i2:
-            targ_y[ti] = src_y[i1]
+        if require_extrap and extrapolate == 'nan':
+            targ_y[ti] = np.nan
         else:
-            targ_y[ti] = (
-                src_y[i1] + (targ_x[ti] - src_x[i1]) * 
-                (src_y[i2] - src_y[i1]) / (src_x[i2] - src_x[i1])
-            )
+            if i1 == i2:
+                targ_y[ti] = src_y[i1]
+            else:
+                targ_y[ti] = (
+                    src_y[i1] + (targ_x[ti] - src_x[i1]) * 
+                    (src_y[i2] - src_y[i1]) / (src_x[i2] - src_x[i1])
+                )
 
     return(targ_y)
 

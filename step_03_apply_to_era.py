@@ -18,7 +18,7 @@ from functions import (
     load_delta,
     load_delta_interp,
     integ_geopot,
-    interp_logp_3d,
+    interp_logp_4d,
     determine_p_ref,
     )
 from constants import CON_G, CON_RD
@@ -27,7 +27,7 @@ from settings import (
     i_debug,
     era5_file_name_base,
     var_name_map,
-    TIME_ERA, VERT_ERA, VERT_HL_ERA, LON_ERA, LAT_ERA, SOIL_HL_ERA,
+    TIME_ERA, LEV_ERA, HLEV_ERA, LON_ERA, LAT_ERA, SOIL_HLEV_ERA,
     TIME_GCM, PLEV_GCM,
     i_reinterp,
     p_ref_inp,
@@ -60,10 +60,10 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     ##########################################################################
 
     If the variable names in the ERA5 files to be processed deviate from
-    the usual naming convention, the dict 'var_name_map' in the file 
-    settings.py allows to map the usual names to the names in the ERA5
-    used here. Also the coordinate names in the ERA5 or the GCM climate
-    delta files can be changed there, if required.
+    the CMOR convention, the dict 'var_name_map' in the file 
+    settings.py allows to map between the CMOR names and the names in the ERA5
+    file. Also the coordinate names in the ERA5 or the GCM climate
+    delta files can be changed in settings.py, if required.
 
     ##########################################################################
 
@@ -114,7 +114,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     # pressure on half levels
     pa_hl_era = (laffile.ak + 
                 laffile[var_name_map['ps']] * laffile.bk).transpose(
-                TIME_ERA, VERT_HL_ERA, LAT_ERA, LON_ERA)
+                TIME_ERA, HLEV_ERA, LAT_ERA, LON_ERA)
     # if akm and akb coefficients (for full levels) exist, use them
     if 'akm' in laffile:
         akm = laffile.akm
@@ -124,25 +124,25 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     else:
         akm = (
             0.5 * laffile.ak.diff(
-            dim=VERT_HL_ERA, 
-            label='lower').rename({VERT_HL_ERA:VERT_ERA}) + 
-            laffile.ak.isel({VERT_HL_ERA:range(len(laffile.level1)-1)}).values
+            dim=HLEV_ERA, 
+            label='lower').rename({HLEV_ERA:LEV_ERA}) + 
+            laffile.ak.isel({HLEV_ERA:range(len(laffile.level1)-1)}).values
         )
         bkm = (
             0.5 * laffile.bk.diff(
-            dim=VERT_HL_ERA, 
-            label='lower').rename({VERT_HL_ERA:VERT_ERA}) + 
-            laffile.bk.isel({VERT_HL_ERA:range(len(laffile.level1)-1)}).values
+            dim=HLEV_ERA, 
+            label='lower').rename({HLEV_ERA:LEV_ERA}) + 
+            laffile.bk.isel({HLEV_ERA:range(len(laffile.level1)-1)}).values
         )
     # pressure on full levels
     pa_era = (akm + laffile[var_name_map['ps']] * bkm).transpose(
-                TIME_ERA, VERT_ERA, LAT_ERA, LON_ERA)
+                TIME_ERA, LEV_ERA, LAT_ERA, LON_ERA)
 
     # compute relative humidity in ERA climate state
     laffile[var_name_map['hur']] = specific_to_relative_humidity(
                         laffile[var_name_map['hus']], 
                         pa_era, laffile[var_name_map['ta']]).transpose(
-                        TIME_ERA, VERT_ERA, LAT_ERA, LON_ERA)
+                        TIME_ERA, LEV_ERA, LAT_ERA, LON_ERA)
 
     # update surface temperature using near-surface temperature delta
     var_name = 'tas'
@@ -165,7 +165,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
             delta_st_clim + np.exp(-laffile.soil1/2.8) * 
                     (delta_tas - delta_st_clim)
     )
-    delta_st = delta_st.transpose(TIME_ERA, SOIL_HL_ERA, LAT_ERA, LON_ERA)
+    delta_st = delta_st.transpose(TIME_ERA, SOIL_HLEV_ERA, LAT_ERA, LON_ERA)
     laffile[var_name_map[var_name]].values += delta_st
 
     # containers for variable computation
@@ -226,9 +226,9 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
 
         # recompute pressure on full and half levels
         pa_pgw = (akm + ps_pgw * bkm).transpose(
-                    TIME_ERA, VERT_ERA, LAT_ERA, LON_ERA)
+                    TIME_ERA, LEV_ERA, LAT_ERA, LON_ERA)
         pa_hl_pgw = (laffile.ak + ps_pgw * laffile.bk).transpose(
-                    TIME_ERA, VERT_HL_ERA, LAT_ERA, LON_ERA)
+                    TIME_ERA, HLEV_ERA, LAT_ERA, LON_ERA)
 
 
         if i_reinterp:
@@ -236,7 +236,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
             # climate deltas onto updated model levels, and
             # compute PGW climate state variables
             for var_name in ['ta', 'hur']:
-                vars_era[var_name] = interp_logp_3d(
+                vars_era[var_name] = interp_logp_4d(
                                 laffile[var_name_map[var_name]], 
                                 pa_era, pa_pgw, extrapolate='constant')
                 deltas[var_name] = load_delta_interp(delta_input_dir,
@@ -257,9 +257,9 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                                 laffile[TIME_ERA], era_step_dt)[PLEV_GCM]
             # surface pressure in ERA and PGW climate states
             p_sfc_era = pa_hl_era.sel(
-                        {VERT_HL_ERA:np.max(pa_hl_era[VERT_HL_ERA])})
+                        {HLEV_ERA:np.max(pa_hl_era[HLEV_ERA])})
             p_sfc_pgw = pa_hl_pgw.sel(
-                        {VERT_HL_ERA:np.max(pa_hl_pgw[VERT_HL_ERA])})
+                        {HLEV_ERA:np.max(pa_hl_pgw[HLEV_ERA])})
             # reference pressure from a former iteration already set?
             try:
                 p_ref_last = p_ref
@@ -270,20 +270,20 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                     p_ref_opts, p_ref_last,
                     input_core_dims=[[],[],[PLEV_GCM],[]],
                     vectorize=True)
-            if VERT_HL_ERA in p_ref.coords:
-                del p_ref[VERT_HL_ERA]
+            if HLEV_ERA in p_ref.coords:
+                del p_ref[HLEV_ERA]
         else:
             p_ref = p_ref_inp
 
         # compute updated geopotential at reference pressure
         phi_ref_pgw = integ_geopot(pa_hl_pgw, laffile.FIS, vars_pgw['ta'], 
-                                    vars_pgw['hus'], laffile[VERT_HL_ERA], p_ref)
+                                    vars_pgw['hus'], laffile[HLEV_ERA], p_ref)
 
         # recompute original geopotential
         phi_ref_era = integ_geopot(pa_hl_era, laffile.FIS,
                                     laffile[var_name_map['ta']], 
                                     laffile[var_name_map['hus']], 
-                                    laffile[VERT_HL_ERA], p_ref)
+                                    laffile[HLEV_ERA], p_ref)
 
         delta_phi_ref = phi_ref_pgw - phi_ref_era
 
@@ -298,10 +298,10 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
 
         adj_ps = - adj_factor * ps_pgw / (
                 CON_RD * 
-                vars_pgw['ta'].sel({VERT_ERA:np.max(laffile[VERT_ERA])})
+                vars_pgw['ta'].sel({LEV_ERA:np.max(laffile[LEV_ERA])})
             ) * phi_ref_error
-        if VERT_ERA in adj_ps.coords:
-            del adj_ps[VERT_ERA]
+        if LEV_ERA in adj_ps.coords:
+            del adj_ps[LEV_ERA]
 
         phi_ref_max_error = np.abs(phi_ref_error).max().values
         if i_debug >= 2:
@@ -327,7 +327,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         for var_name in ['ua', 'va']:
             if i_debug >= 2:
                 print('add {}'.format(var_name))
-            var_era = interp_logp_3d(laffile[var_name_map[var_name]], 
+            var_era = interp_logp_4d(laffile[var_name_map[var_name]], 
                             pa_era, pa_pgw, extrapolate='constant')
             dvar = load_delta_interp(delta_input_dir,
                     var_name, pa_pgw,
