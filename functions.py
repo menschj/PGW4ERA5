@@ -138,6 +138,15 @@ def load_delta(delta_inp_path, var_name, era_date_time,
     full_delta = xr.open_dataset(os.path.join(delta_inp_path,
                             name_base.format(var_name)))
 
+    ## remove leap year february 29th if in delta
+    leap_day = None
+    for tind,dt64 in enumerate(full_delta.time.values):
+        dt = dt64_to_dt(dt64)
+        if (dt.month == 2) and (dt.day == 29):
+            leap_day = dt64
+    if leap_day is not None:
+        full_delta = full_delta.drop_sel(time=leap_day)
+
     ## if climate delta should be interpolated to a specific time
     if delta_date_time is not None:
         # replace delta year values with year of current delta_date_time
