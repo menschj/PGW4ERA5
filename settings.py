@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 description     Settings namelist for all routines in PGW for ERA5
-authors		    Before 2022: original developments by Roman Brogli
+authors		Before 2022: original developments by Roman Brogli
                 Since 2022:  upgrade to PGW for ERA5 by Christoph Heim 
 """
 ##############################################################################
@@ -61,7 +61,7 @@ adj_factor = 0.95
 # if procedure does not converge, raise this value a little bit.
 thresh_phi_ref_max_error = 0.10
 # maximum number of iterations before error is raised.
-max_n_iter = 10
+max_n_iter = 20
 ##########################################################################
 
 # dimension names in ERA5 file

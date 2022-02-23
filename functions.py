@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 description     Auxiliary functions for PGW for ERA5
-authors		    Before 2022: original developments by Roman Brogli
+authors		Before 2022: original developments by Roman Brogli
                 Since 2022:  upgrade to PGW for ERA5 by Christoph Heim 
 """
 ##############################################################################
@@ -127,15 +127,15 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
 ##############################################################################
 ##### CLIMATE DELTA COMPUTATION AND INTERPOLATION
 ##############################################################################
-def load_delta(delta_inp_path, var_name, era_date_time, 
-               delta_date_time=None,
+def load_delta(delta_input_dir, var_name, era5_date_time, 
+               target_date_time=None,
                name_base=climate_delta_file_name_base):
     """
-    Load a climate delta and if delta_date_time is given,
+    Load a climate delta and if target_date_time is given,
     interpolate it to that date and time of the year.
     """
     ## full climate delta (either daily or monthly)
-    full_delta = xr.open_dataset(os.path.join(delta_inp_path,
+    full_delta = xr.open_dataset(os.path.join(delta_input_dir,
                             name_base.format(var_name)))
 
     ## remove leap year february 29th if in delta
@@ -148,34 +148,34 @@ def load_delta(delta_inp_path, var_name, era_date_time,
         full_delta = full_delta.drop_sel(time=leap_day)
 
     ## if climate delta should be interpolated to a specific time
-    if delta_date_time is not None:
-        # replace delta year values with year of current delta_date_time
+    if target_date_time is not None:
+        # replace delta year values with year of current target_date_time
         for i in range(len(full_delta.time)):
             full_delta.time.values[i] = dt64_to_dt(
                         full_delta.time[i]).replace(
-                                year=delta_date_time.year)
+                                year=target_date_time.year)
 
         # add periodicity at the start and the end of the
         # annual cycle
         last_year = full_delta.isel(time=-1)
         last_year.time.values = dt64_to_dt(
                     last_year.time).replace(
-                            year=delta_date_time.year-1)
+                            year=target_date_time.year-1)
         next_year = full_delta.isel(time=0)
         next_year.time.values = dt64_to_dt(
                     next_year.time).replace(
-                            year=delta_date_time.year+1)
+                            year=target_date_time.year+1)
         full_delta = xr.concat([last_year, full_delta, next_year],
                                 dim='time')
 
         # interpolate in time and select variable
-        delta = full_delta[var_name].interp(time=delta_date_time, 
+        delta = full_delta[var_name].interp(time=target_date_time, 
                                     method='linear', 
                                 ).expand_dims(dim='time', axis=0)
 
         # make sure time is in the same format as in ERA5 file
         # ERA5 has "seconds since xyz" while delta has np.datetime64
-        delta['time'] = era_date_time
+        delta['time'] = era5_date_time
 
     ## if full climate delta should be returned without 
     ## time interpolation
@@ -186,7 +186,7 @@ def load_delta(delta_inp_path, var_name, era_date_time,
 
 
 ### TODO DEBUG START
-#def load_delta_old(delta_inp_path, var_name, era_date_time, 
+#def load_delta_old(delta_inp_path, var_name, era5_date_time, 
 #               delta_date_time=None, name_base='{}_delta.nc'):
 #    """
 #    Load a climate delta and if delta_date_time is given,
@@ -201,13 +201,13 @@ def load_delta(delta_inp_path, var_name, era_date_time,
 #    delta = xr.open_dataset(os.path.join(delta_inp_path,
 #            name_base.format(var_name, diff_time_step)))[var_name]
 #    # make sure time is in the same format as in laf file
-#    delta['time'] = era_date_time
+#    delta['time'] = era5_date_time
 #
 #    return(delta)
 ### TODO DEBUG STOP
 
-def load_delta_interp(delta_inp_path, var_name, target_P,
-                    era_date_time, delta_date_time,
+def load_delta_interp(delta_input_dir, var_name, target_P,
+                    era5_date_time, target_date_time,
                     ignore_top_pressure_error=False):
     """
     Does the following:
@@ -218,17 +218,17 @@ def load_delta_interp(delta_inp_path, var_name, target_P,
           the interpolation to the ERA5 model levels more precise.
         - vertically interpolate climate deltas to ERA5 model levels
     """
-    delta = load_delta(delta_inp_path, var_name, 
-                        era_date_time, delta_date_time)
+    delta = load_delta(delta_input_dir, var_name, 
+                        era5_date_time, target_date_time)
 
     ## for specific variables also load climate delta for surface
     ## values and the historical surface pressure.
     if var_name in ['ta','hur']:
         sfc_var_name = var_name + 's'
-        delta_sfc = load_delta(delta_inp_path, sfc_var_name, 
-                            era_date_time, delta_date_time)
-        ps_hist = load_delta(delta_inp_path, 'ps', 
-                            era_date_time, delta_date_time,
+        delta_sfc = load_delta(delta_input_dir, sfc_var_name, 
+                            era5_date_time, target_date_time)
+        ps_hist = load_delta(delta_input_dir, 'ps', 
+                            era5_date_time, target_date_time,
                             name_base=era_climate_file_name_base)
     else:
         delta_sfc = None
