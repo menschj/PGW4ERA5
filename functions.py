@@ -155,23 +155,59 @@ def load_delta(delta_input_dir, var_name, era5_date_time,
                         full_delta.time[i]).replace(
                                 year=target_date_time.year)
 
-        # add periodicity at the start and the end of the
-        # annual cycle
-        last_year = full_delta.isel(time=-1)
-        last_year.time.values = dt64_to_dt(
-                    last_year.time).replace(
-                            year=target_date_time.year-1)
-        next_year = full_delta.isel(time=0)
-        next_year.time.values = dt64_to_dt(
-                    next_year.time).replace(
-                            year=target_date_time.year+1)
-        full_delta = xr.concat([last_year, full_delta, next_year],
-                                dim='time')
+        # find time index of climate delta before target time
+        # (and implement periodicity if necessary)
+        is_before = (full_delta.time.values <= 
+                    np.datetime64(target_date_time))
 
-        # interpolate in time and select variable
-        delta = full_delta[var_name].interp(time=target_date_time, 
-                                    method='linear', 
-                                ).expand_dims(dim='time', axis=0)
+        # target time is within year 
+        # --> periodicity not necessary
+        if np.sum(is_before) > 0:
+            ind_before = np.argwhere(is_before)[-1].squeeze()
+            before = full_delta.isel(time=ind_before)
+
+        # target time is before the first delta time step 
+        # --> periodicity necessary
+        else:
+            ind_before = -1
+            before = full_delta.isel(time=ind_before)
+            before.time.values = dt64_to_dt(
+                        before.time).replace(
+                                year=target_date_time.year-1)
+
+        # find time index of climate delta after target time
+        # (and implement periodicity if necessary)
+        is_after =(full_delta.time.values >= 
+                    np.datetime64(target_date_time)) 
+
+        # target time is within year 
+        # --> periodicity not necessary
+        if np.sum(is_after) > 0:
+            ind_after = np.argwhere(is_after)[0].squeeze()
+            after = full_delta.isel(time=ind_after)
+
+        # target time is after the last delta time step 
+        # --> periodicity necessary
+        else:
+            ind_after = 0
+            after = full_delta.isel(time=ind_after)
+            after.time.values = dt64_to_dt(
+                        after.time).replace(
+                                year=target_date_time.year+1)
+
+        # if target time is exactly contained in climate delta
+        # just take that value (from "before" which is arbitrary)
+        if ind_before == ind_after:
+            delta = before[var_name].expand_dims(dim='time', axis=0)
+
+        # if interpolation is necessary, concate "before" and 
+        # "after" and interpolate 
+        else:
+            full_delta = xr.concat([before, after], dim='time')
+            # interpolate in time and select variable
+            delta = full_delta[var_name].interp(time=target_date_time, 
+                                        method='linear', 
+                                    ).expand_dims(dim='time', axis=0)
 
         # make sure time is in the same format as in ERA5 file
         # ERA5 has "seconds since xyz" while delta has np.datetime64

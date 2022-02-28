@@ -413,13 +413,12 @@ def debug_interpolate_time(
     var_names = ['tas','hurs','ps','ta','hur','ua','va','zg']
     for var_name in var_names:
         print(var_name)
-        ## for ps take era climatology file while for all other variables
-        ## take climate delta file
-        #if var_name == 'ps':
-        #    name_base = era_climate_file_name_base
-        #else:
-        #    name_base = climate_delta_file_name_base
-        name_base = climate_delta_file_name_base
+        # for ps take era climatology file while for all other variables
+        # take climate delta file
+        if var_name == 'ps':
+            name_base = era_climate_file_name_base
+        else:
+            name_base = climate_delta_file_name_base
         # create gcm input file name (excluding ".nc")
         gcm_file_name = name_base.format(var_name).split('.nc')[0]
         # creat output file name
