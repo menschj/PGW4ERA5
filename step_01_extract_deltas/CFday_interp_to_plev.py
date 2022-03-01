@@ -86,9 +86,6 @@ if __name__ == '__main__':
 
             ds = xr.open_dataset(inp_file_path)
 
-            # select subdomain
-            if subdomain is not None:
-                ds = ds.sel(subdomain)
             # sort pressure ascending
             ds = ds.reindex({LEV_GCM:ds['lev'][::-1]})
             # compute pressure on full levels
