@@ -260,6 +260,7 @@ def load_delta_interp(delta_input_dir, var_name, target_P,
     ## for specific variables also load climate delta for surface
     ## values and the historical surface pressure.
     if var_name in ['ta','hur']:
+    #if var_name in []:
         sfc_var_name = var_name + 's'
         delta_sfc = load_delta(delta_input_dir, sfc_var_name, 
                             era5_date_time, target_date_time)
@@ -513,15 +514,16 @@ def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
 
 def determine_p_ref(ps_era, ps_pgw, p_ref_opts, p_ref_last=None):
     """
-    Find lowest GCM pressure level among p_ref_opts that lies above 
-    surface (surface pressure) in both ERA and PGW climate.
+    Find lowest GCM pressure level among p_ref_opts that lies a minimum 
+    distance 
+    above the surface (surface pressure) in both ERA and PGW climate.
     Also ensure that during the iterations, no reference pressure level 
     at lower altitude than during last iterations is used. This is to
     prevent the iteration algorithm to oscillate between two reference
     pressure levels and not converge.
     """
     for p in p_ref_opts:
-        if (ps_era > p) & (ps_pgw > p):
+        if (ps_era * 0.9 > p) & (ps_pgw * 0.9 > p):
             if p_ref_last is None:
                 return(p)
             else:
