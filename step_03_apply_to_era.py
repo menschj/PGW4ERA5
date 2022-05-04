@@ -271,25 +271,41 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
             # get GCM pressure levels as candidates for reference pressure
             p_ref_opts = load_delta(delta_input_dir, 'zg',
                                 era_file[TIME_ERA], era_step_dt)[PLEV_GCM]
-            # surface pressure in ERA and PGW climate states
-            p_sfc_era = pa_hl_era.sel(
-                        {HLEV_ERA:np.max(pa_hl_era[HLEV_ERA])})
-            p_sfc_pgw = pa_hl_pgw.sel(
-                        {HLEV_ERA:np.max(pa_hl_pgw[HLEV_ERA])})
+            # maximum reference pressure in ERA and PGW climate states
+            # (take 90% of surface pressure to ensure that a few model
+            # levels are located in between which makes the solution
+            # smoother).
+            p_min_era = pa_hl_era.isel(
+                        {HLEV_ERA:len(pa_hl_era[HLEV_ERA])-1}) * 0.95
+            p_min_pgw = pa_hl_pgw.isel(
+                        {HLEV_ERA:len(pa_hl_era[HLEV_ERA])-1}) * 0.95
             # reference pressure from a former iteration already set?
             try:
                 p_ref_last = p_ref
             except UnboundLocalError:
                 p_ref_last = None
             # determine local reference pressure
-            p_ref = xr.apply_ufunc(determine_p_ref, p_sfc_era, p_sfc_pgw, 
+            p_ref = xr.apply_ufunc(determine_p_ref, p_min_era, p_min_pgw, 
                     p_ref_opts, p_ref_last,
                     input_core_dims=[[],[],[PLEV_GCM],[]],
                     vectorize=True)
             if HLEV_ERA in p_ref.coords:
                 del p_ref[HLEV_ERA]
+            # make sure a reference pressure above the required model
+            # level could be found everywhere
+            if np.any(np.isnan(p_ref)):
+                raise ValueError('No reference pressure level above the ' +
+                        'required local minimum pressure level could not ' +
+                        'be found everywhere. ' +
+                        'This is likely the case because your geopotential ' +
+                        'data set does not reach up high enough (e.g. only to ' +
+                        '500 hPa instead of e.g. 300 hPa?)')
         else:
             p_ref = p_ref_inp
+
+        #p_sfc_era.to_netcdf('psfc_era.nc')
+        #p_ref.to_netcdf('pref.nc')
+        #quit()
 
         # compute updated geopotential at reference pressure
         phi_ref_pgw = integ_geopot(pa_hl_pgw, era_file.FIS, vars_pgw['ta'], 
@@ -413,12 +429,13 @@ def debug_interpolate_time(
     var_names = ['tas','hurs','ps','ta','hur','ua','va','zg']
     for var_name in var_names:
         print(var_name)
-        # for ps take era climatology file while for all other variables
-        # take climate delta file
-        if var_name == 'ps':
-            name_base = era_climate_file_name_base
-        else:
-            name_base = climate_delta_file_name_base
+        ## for ps take era climatology file while for all other variables
+        ## take climate delta file
+        #if var_name == 'ps':
+        #    name_base = era_climate_file_name_base
+        #else:
+        #    name_base = climate_delta_file_name_base
+        name_base = climate_delta_file_name_base
         # create gcm input file name (excluding ".nc")
         gcm_file_name = name_base.format(var_name).split('.nc')[0]
         # creat output file name

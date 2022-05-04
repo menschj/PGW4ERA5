@@ -53,13 +53,16 @@ i_reinterp = 0
 # reference pressure level
 # if set to None, the reference pressure level is chosen locally, which
 # is strongly recommended.
+#p_ref_inp = 10000
+#p_ref_inp = 30000
 #p_ref_inp = 50000
+#p_ref_inp = 20000
 p_ref_inp = None
 # surface pressure adjustment factor in the iterative routine
 adj_factor = 0.95
 # convergence threshold (maximum geopotential error)
 # if procedure does not converge, raise this value a little bit.
-thresh_phi_ref_max_error = 0.10
+thresh_phi_ref_max_error = 0.15
 # maximum number of iterations before error is raised.
 max_n_iter = 20
 ##########################################################################
