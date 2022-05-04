@@ -433,6 +433,11 @@ def interp_1d_for_timelatlon(orig_array, src_p, targ_p, interp_array,
                 src_val_col = orig_array[time_ind, :, lat_ind, lon_ind]
                 src_p_col = src_p[time_ind, :, lat_ind, lon_ind]
                 targ_p_col = targ_p[time_ind, :, lat_ind, lon_ind]
+                
+                if src_p_col[-1] < src_p_col[0]:
+                    raise ValueError('Source pressure values must be ascending!')
+                if targ_p_col[-1] < targ_p_col[0]:
+                    raise ValueError('Target pressure values must be ascending!') 
 
                 # call 1D interpolation function for current column
                 interp_col = interp_extrap_1d(src_p_col, src_val_col, 
@@ -512,18 +517,18 @@ def interp_extrap_1d(src_x, src_y, targ_x, extrapolate):
     return(targ_y)
 
 
-def determine_p_ref(ps_era, ps_pgw, p_ref_opts, p_ref_last=None):
+def determine_p_ref(p_min_era, p_min_pgw, p_ref_opts, p_ref_last=None):
     """
-    Find lowest GCM pressure level among p_ref_opts that lies a minimum 
-    distance 
-    above the surface (surface pressure) in both ERA and PGW climate.
+    Find lowest GCM pressure level among p_ref_opts that lies 
+    above the minimum pressure (e.g. currently set to 90% surface pressure)
+    in both ERA and PGW climate.
     Also ensure that during the iterations, no reference pressure level 
     at lower altitude than during last iterations is used. This is to
     prevent the iteration algorithm to oscillate between two reference
     pressure levels and not converge.
     """
     for p in p_ref_opts:
-        if (ps_era * 0.9 > p) & (ps_pgw * 0.9 > p):
+        if (p_min_era > p) & (p_min_pgw > p):
             if p_ref_last is None:
                 return(p)
             else:
