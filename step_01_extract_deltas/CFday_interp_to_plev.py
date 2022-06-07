@@ -80,9 +80,8 @@ if __name__ == '__main__':
             out_file_path = os.path.join(out_dir, out_file_name)
             inp_file_path = os.path.join(inp_dir, inp_file_name)
 
-            print(inp_file_path)
-            print(out_file_path)
-            #quit()
+            print('Process input file: \n{}\nto output file: \n{}'.format(
+                    inp_file_path, out_file_path))
 
             ds = xr.open_dataset(inp_file_path)
 
@@ -92,6 +91,7 @@ if __name__ == '__main__':
             source_P = (ds.ap + ds.b * ds.ps).transpose(
                                 TIME_GCM, LEV_GCM, LAT_GCM, LON_GCM)
             var = ds[var_name]
+
 
 
             ### Determine target pressure using tropical ocea-only domain
