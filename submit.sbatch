@@ -7,7 +7,7 @@
 #SBATCH --output=/scratch/snx3000/heimc/pgw/out_scripts/out0
 #SBATCH --error=/scratch/snx3000/heimc/pgw/out_scripts/err0
 #SBATCH --ntasks=1
-#SBATCH --account='pr94'
+#SBATCH --account='pr133'
 #SBATCH --constraint=gpu
 
 source ~/phd_scripts/load_modules_daint.sh

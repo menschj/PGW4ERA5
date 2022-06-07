@@ -97,6 +97,7 @@ for var_name in var_names:
     # for ps, take ERA climate mean value (i.e. e.g. ps_historical.nc)
     if var_name == 'ps':
         var_file_name = era_climate_file_name_base.format(var_name)
+        #var_file_name = climate_delta_file_name_base.format(var_name)
     # for all other variables, take climate delta (i.e. e.g. tas_delta.nc)
     else:
         var_file_name = climate_delta_file_name_base.format(var_name)
