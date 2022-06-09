@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     ## input arguments
     parser = argparse.ArgumentParser(description =
-                    'Perturb Extpar soil temperature climatology with PGW climate delta.')
+                    'COSMO-specific: Perturb Extpar soil temperature climatology with PGW climate delta.')
     # extpar file to modify
     parser.add_argument('extpar_file_path', type=str,
             help='Path to extpar file to modify T_CL.')
