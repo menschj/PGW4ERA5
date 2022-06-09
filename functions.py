@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 description     Auxiliary functions for PGW for ERA5
-authors		Before 2022: original developments by Roman Brogli
+authors		    Before 2022: original developments by Roman Brogli
                 Since 2022:  upgrade to PGW for ERA5 by Christoph Heim 
 """
 ##############################################################################
@@ -15,8 +15,7 @@ from constants import CON_RD, CON_G
 from settings import (
     i_debug,
     i_use_xesmf_regridding,
-    era_climate_file_name_base,
-    climate_delta_file_name_base,
+    file_name_bases,
     TIME_ERA, LEV_ERA, HLEV_ERA, LON_ERA, LAT_ERA,
     TIME_GCM, PLEV_GCM, LON_GCM, LAT_GCM,
 )
@@ -129,7 +128,7 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
 ##############################################################################
 def load_delta(delta_input_dir, var_name, era5_date_time, 
                target_date_time=None,
-               name_base=climate_delta_file_name_base):
+               name_base=file_name_bases['SCEN-CTRL']):
     """
     Load a climate delta and if target_date_time is given,
     interpolate it to that date and time of the year.
@@ -248,8 +247,9 @@ def load_delta_interp(delta_input_dir, var_name, target_P,
     """
     Does the following:
         - load a climate delta
-        - for specific variables (ta and hur) also load surface value
-          as well as historical surface pressure. This is to extend
+        - for specific variables (ta and hur) also load surface
+          climate delta,
+          as well as CTRL surface pressure. This is to extend
           the 3D climate deltas with surface values which makes
           the interpolation to the ERA5 model levels more precise.
         - vertically interpolate climate deltas to ERA5 model levels
@@ -266,7 +266,7 @@ def load_delta_interp(delta_input_dir, var_name, target_P,
                             era5_date_time, target_date_time)
         ps_hist = load_delta(delta_input_dir, 'ps', 
                             era5_date_time, target_date_time,
-                            name_base=era_climate_file_name_base)
+                            name_base=file_name_bases['CTRL'])
     else:
         delta_sfc = None
         ps_hist = None
@@ -281,7 +281,7 @@ def replace_delta_sfc(source_P, ps_hist, delta, delta_sfc):
     """
     In the 3D climate deltas, replace the value just below
     the surface by the surface climate delta value and insert
-    it a historical surface pressure. This improves the precision
+    it at CTRL surface pressure. This improves the precision
     of the climate deltas during interpolation to the ERA5 model levels.
     All 3D climate delta values below the historical surface pressure
     are set to the surface value (constant extrapolation). This is

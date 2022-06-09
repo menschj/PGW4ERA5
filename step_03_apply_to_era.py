@@ -10,6 +10,7 @@ authors		Before 2022: original developments by Roman Brogli
 import argparse, os
 import xarray as xr
 import numpy as np
+from argparse import RawDescriptionHelpFormatter
 from pathlib import Path
 from datetime import datetime, timedelta
 from functions import (
@@ -34,8 +35,7 @@ from settings import (
     thresh_phi_ref_max_error,
     max_n_iter,
     adj_factor,
-    climate_delta_file_name_base,
-    era_climate_file_name_base,
+    file_name_bases,
     )
 ##############################################################################
 
@@ -43,70 +43,6 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                 delta_input_dir, era_step_dt,
                 ignore_top_pressure_error,
                 debug_mode=None):
-    """
-    ##########################################################################
-
-    Main function to update ERA5 files with the PGW signal.
-    The terminology used is the "ERA climate state" referring to
-    the climate state in the ERA5 files, as well as the "PGW 
-    climate state" referring to the future (or past) climate state.
-    The script adds (and requires) climate deltas for:
-        - ua
-        - va
-        - ta (using tas)
-        - hus (computed using a hur and hurs climate delta)
-        - surface and soil temperature
-    and consequently iteratively updates ps to maintain hydrostatic
-    balance. During this, the climate delta for zg is additionally required.
-    Finally, the GCM ps from the historical simulation is also needed.
-
-    ##########################################################################
-
-    If the variable names in the ERA5 files to be processed deviate from
-    the CMOR convention, the dict 'var_name_map' in the file 
-    settings.py allows to map between the CMOR names and the names in the ERA5
-    file. Also the coordinate names in the ERA5 or the GCM climate
-    delta files can be changed in settings.py, if required.
-
-    ##########################################################################
-
-    Some more information about the iterative surface pressure
-    adjustment:
-
-    - As a default option, the climate deltas are interpolated to
-    the ERA5 model levels of the ERA climate state (i_reinterp = 0).
-    There is an option implemented (i_reinterp = 1) in which the
-    deltas are re-interpolated on the updated ERA5 model levels
-    with each iteration of surface pressure adjustment. This was
-    found to lead more balanced PGW climate states if the climate
-    deltas have coarse vertical resolution. However, it also
-    implies that the ERA5 fields are extrapolated at the surface
-    (if the surface pressure increases) the effect of which was not
-    tested in detail. The extrapolation is done assuming that the
-    boundary values are constant, which is not ideal for height-dependent
-    variables like e.g. temperature.
-
-    - The procedure requires a reference pressure level (e.g. 500 hPa) for
-    which the geopotential is computed. Based on the deviation between the
-    computed and the GCM reference pressure geopotential, the surface pressure
-    is adjusted. Since the climate deltas may not always be available at 
-    native vertical GCM resolution, but the climate delta for the geopotential
-    on one specific pressure level itself is computed by the GCM using data
-    from all GCM model levels below, this introduces an error in the surface
-    pressure adjustment used here.
-    The higher the reference pressure is chosen, the large this error may
-    get. To alleviate this problem, the default option is that the reference
-    pressure is determined locally as the lowest possible pressure above
-    the surface for which a climate delta for the geopotential is available.
-    It is strongly recommended to use this option (p_ref = None).
-
-    - If the iteration does not converge, 'thresh_phi_ref_max_error' in
-    the file settings.py may have to be raised a little bit. Setting
-    i_debug = 2 may help to diagnose if this helps.
-
-    ##########################################################################
-
-    """
     if i_debug >= 0:
         print('Start working on input file {}'.format(inp_era_file_path))
 
@@ -461,7 +397,83 @@ def debug_interpolate_time(
 if __name__ == "__main__":
     ## input arguments
     parser = argparse.ArgumentParser(description =
-                    'Perturb ERA5 with PGW climate deltas.')
+    """
+    Perturb ERA5 with PGW climate deltas. Settings can be made in
+    "settings.py".
+    ##########################################################################
+
+    Main function to update ERA5 files with the PGW signal.
+    The terminology used is CTRL referring to the historical (or reference)
+    climatology, SCEN referring to the future (climate change scenario)
+    climatology, and SCEN-CTRL (a.k.a. climate delta) referring to the
+    PGW signal which should be applied to the ERA5 files.
+    The script adds (and requires) SCEN-CTRL for:
+        - ua
+        - va
+        - ta (using tas)
+        - hus (computed using a hur and hurs climate delta)
+        - surface and soil temperature
+    and consequently iteratively updates ps to maintain hydrostatic
+    balance. During this, the climate delta for zg is additionally required.
+    Finally, the CTRL ps is also needed.
+
+    ##########################################################################
+
+    If the variable names in the ERA5 files to be processed deviate from
+    the CMOR convention, the dict 'var_name_map' in the file 
+    settings.py allows to map between the CMOR names and the names in the ERA5
+    file. Also the coordinate names in the ERA5 or the GCM climate
+    delta files can be changed in settings.py, if required.
+
+    ##########################################################################
+
+    The code can be run in parallel on multiple ERA5 files at the same time.
+    See input arguments.
+
+    ##########################################################################
+
+    Some more information about the iterative surface pressure
+    adjustment:
+
+    - The procedure requires a reference pressure level (e.g. 500 hPa) for
+    which the geopotential is computed. Based on the deviation between the
+    computed and the GCM reference pressure geopotential, the surface pressure
+    is adjusted. Since the climate deltas may not always be available at 
+    native vertical GCM resolution, but the climate delta for the geopotential
+    on one specific pressure level itself is computed by the GCM using data
+    from all GCM model levels, this introduces an error in the surface
+    pressure adjustment used here. See publication for more details.
+    The higher (in terms of altitdue) the reference pressure is chosen, 
+    the larger this error may get. 
+    To alleviate this problem, the default option is that the reference
+    pressure is determined locally as the lowest possible pressure above
+    the surface for which a climate delta for the geopotential is available.
+    In general -- even more so if climate deltas have coarse vertical 
+    resolution -- it seems to be a good choice to use this default.
+
+    - If the iteration does not converge, 'thresh_phi_ref_max_error' in
+    the file settings.py may have to be raised a little bit. Setting
+    i_debug = 2 may help to diagnose if this helps.
+
+
+    - As a default option, the climate deltas are interpolated to
+    the ERA5 model levels of the ERA climate state before the surface
+    pressure is adjusted (i_reinterp = 0).
+    There is an option implemented (i_reinterp = 1) in which the
+    deltas are re-interpolated on the updated ERA5 model levels
+    with each iteration of surface pressure adjustment. This was
+    found to lead more balanced PGW climate states if the climate
+    deltas have coarse vertical resolution. However, it also
+    implies that the ERA5 fields are extrapolated at the surface
+    (if the surface pressure increases) the effect of which was not
+    tested in detail. The extrapolation is done assuming that the
+    boundary values are constant, which is not ideal for height-dependent
+    variables like e.g. temperature. As a default, it is recommended to set
+    i_reinterp = 0.
+
+    ##########################################################################
+
+    """, formatter_class=RawDescriptionHelpFormatter)
 
     # input era5 directory
     parser.add_argument('-i', '--input_dir', type=str, default=None,
@@ -493,10 +505,10 @@ if __name__ == "__main__":
 
     # climate delta directory (already remapped to ERA5 grid)
     parser.add_argument('-d', '--delta_input_dir', type=str, default=None,
-            help='Directory with GCM climate deltas to be used. ' +
+            help='Directory with GCM climate deltas (SCEN-CTRL) to be used. ' +
             'This directory should have a climate delta for ta,hur,' +
             'ua,va,zg,tas,hurs (e.g. ta_delta.nc), as well as the ' +
-            'ps value from the ERA climatology (e.g. ps_historical.nc). ' +
+            'CTRL climatology value for ps (e.g. ps_historical.nc). ' +
             'All files have to be horizontally remapped to the grid of ' +
             'the ERA5 files used (see step_02_preproc_deltas.py).')
 
@@ -510,10 +522,11 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--ignore_top_pressure_error',
             action='store_true',
             help='Flag to ignore an error due to pressure ' +
-            'extrapolation at the model top if climate deltas reach ' +
-            'up less far than ERA5. This should only be done if data ' +
-            'is not used beyond the upper-most level of the climate ' +
-            'deltas.')
+            'extrapolation at the model top if GCM climate deltas reach ' +
+            'up less far than ERA5. This can only be done if ERA5 data ' +
+            'is not used by the limited-area model '+
+            'beyond the upper-most level of the GCM climate ' +
+            'deltas!!')
 
     # input era5 directory
     parser.add_argument('-D', '--debug_mode', type=str, default=None,

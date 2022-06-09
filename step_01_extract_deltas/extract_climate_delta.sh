@@ -60,8 +60,10 @@ table_ID=Amon
 #table_ID=Emon
 ## standard daily output
 #table_ID=day
-### CFMIP daily output
+## CFMIP daily output
 #table_ID=CFday
+## ocean monthly output
+#table_ID=Omon
 
 
 ## select variables to extract
@@ -73,6 +75,8 @@ elif [[ "$table_ID" == "Emon" ]]; then
     var_names=(ua va ta hus zg)
 elif [[ "$table_ID" == "CFday" ]]; then
     var_names=(ua va ta hur)
+elif [[ "$table_ID" == "Omon" ]]; then
+    var_names=(tos)
 fi
 ## for Emon, compute hur delta separately after 
 ## it has been derived from hus

@@ -26,7 +26,7 @@ To install the enviroment, just execute `conda env create -f environment.yml` on
 
 Annual climate deltas (SCEN-CTRL) and control climatology (CTRL) from a global climate model in either daily or monthly steps.
 Climate deltas refer to the difference between the fields predicted by the climate model between two different time periods (usually future and present). If climate model data in the CMOR format (e.g. CMIP simulations) will be used to force the PGW simulations there is a practical [documentation](/Documentations/README_CMOR.md) on which variables are needed.
-Template scripts to process CMIP6 data are given in [step_01_extract_deltas](/step_01_extract_deltas/).
+Template scripts to extract CMIP6 data are given in [step_01_extract_deltas](/step_01_extract_deltas/), e.g. [this one](/step_01_extract_deltas/extract_climate_delta.sh).
 
 **Input On Daily Timescale**
 
