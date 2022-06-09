@@ -9,10 +9,10 @@ To modify the ERA5 files, we need a climate change signal obtained from the diff
 
 The structure of the repository is built as follows:
 
-The top level directory contains the central scripts to preprocess the GCM climate change signal (step_02_preproc_deltas.py) and to modify the ERA5 files (step_03_apply_to_era.py) with the climate change signal.
-An additional directory contains less generic code that can serve as a template to obtain the GCM climatologies CTRL, SCEN, as well as the climate delta SCEN-HIST from raw CMIP6 output (step_01_extract_deltas). This script has to be adjusted depending on the specific use case.
+The top level directory contains the central scripts to preprocess the GCM climate change signal [step_02_preproc_deltas.py](/step_02_preproc_deltas.py) and to modify the ERA5 files [step_03_apply_to_era.py](/step_03_apply_to_era.py) with the climate change signal.
+An additional directory contains less generic code that can serve as a template to obtain the GCM climatologies CTRL, SCEN, as well as the climate delta SCEN-HIST from raw CMIP6 output [step_01_extract_deltas](/step_01_extract_deltas/). This script has to be adjusted depending on the specific use case.
 
-Note that more usage-oriented information can be found by running `python step_02_preproc_deltas.py --help` and `python step_03_apply_to_era.py --help`.
+Note that essential usage-oriented information can be found by running `python step_02_preproc_deltas.py --help` and `python step_03_apply_to_era.py --help`.
 
 # Software Requirements
 
@@ -34,8 +34,8 @@ Use settings.py or a similar script to set up the workflow. Run the following sc
 1) Smooth deltas in time: `python step_02_preproc_deltas.py smoothing [...]`
 2) Regrid deltas to ERA5 grid: `python step_02_preproc_deltas.py regridding [...]`
 3) Modify ERA5 files: `python step_03_apply_to_era.py [...]`
-4) There may be some additional limited-area-model dependend steps to do. For instance in COSMO, the deep soil temperature has to be adjusted in the external parameters file. [COSMO](/COSMO/). 
-5) After these steps, the limited-area-model-specific routine to convert ERA5 files to model initial and boundary conditions can be run.
+4) There may be some additional steps required for a specific limited-area model. For instance in COSMO, the deep soil temperature climatology has to be adjusted in the external parameters file. [postproc_cosmo](/postproc_cosmo/). 
+5) After these steps, the limited-area-model-specific routine to convert ERA5 files to model initial and boundary conditions can be runusing the modified ERA5 files as input.
 
 **Input on Monthly Timescale**
 
