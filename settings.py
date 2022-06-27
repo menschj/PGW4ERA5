@@ -90,8 +90,8 @@ i_use_xesmf_regridding = 0
 # with only 6 vertical levels between 1000-500 hPa), settting
 # p_ref_inp = None may be better. See publication
 # for more information.
-p_ref_inp = 50000 # Pa
-#p_ref_inp = None
+#p_ref_inp = 50000 # Pa
+p_ref_inp = None
 # surface pressure adjustment factor in the iterative routine
 adj_factor = 0.95
 # convergence threshold (maximum geopotential error)

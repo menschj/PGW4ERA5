@@ -197,6 +197,11 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                                                 ignore_top_pressure_error)
                 vars_pgw[var_name] = vars_era[var_name] + deltas[var_name]
 
+                # convert relative humidity to speicifc humidity in pgw
+                vars_pgw['hus'] = relative_to_specific_humidity(
+                                vars_pgw['hur'], pa_pgw, vars_pgw['ta'])
+
+
         # Determine current reference pressure (p_ref)
         if p_ref_inp is None:
             # get GCM pressure levels as candidates for reference pressure
@@ -237,10 +242,6 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         #p_sfc_era.to_netcdf('psfc_era.nc')
         #p_ref.to_netcdf('pref.nc')
         #quit()
-
-        # convert relative humidity to speicifc humidity in pgw
-        vars_pgw['hus'] = relative_to_specific_humidity(
-                        vars_pgw['hur'], pa_pgw, vars_pgw['ta'])
 
         # compute updated geopotential at reference pressure
         phi_ref_pgw = integ_geopot(pa_hl_pgw, era_file.FIS, vars_pgw['ta'], 
