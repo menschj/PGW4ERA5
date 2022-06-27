@@ -197,11 +197,6 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                                                 ignore_top_pressure_error)
                 vars_pgw[var_name] = vars_era[var_name] + deltas[var_name]
 
-            # convert relative humidity to speicifc humidity in pgw
-            vars_pgw['hus'] = relative_to_specific_humidity(
-                            vars_pgw['hur'], pa_pgw, vars_pgw['ta'])
-
-
         # Determine current reference pressure (p_ref)
         if p_ref_inp is None:
             # get GCM pressure levels as candidates for reference pressure
@@ -243,11 +238,16 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         #p_ref.to_netcdf('pref.nc')
         #quit()
 
+        # convert relative humidity to speicifc humidity in pgw
+        vars_pgw['hus'] = relative_to_specific_humidity(
+                        vars_pgw['hur'], pa_pgw, vars_pgw['ta'])
+
         # compute updated geopotential at reference pressure
         phi_ref_pgw = integ_geopot(pa_hl_pgw, era_file.FIS, vars_pgw['ta'], 
                                     vars_pgw['hus'], era_file[HLEV_ERA], p_ref)
 
-        # recompute original geopotential
+        # recompute original geopotential at currently used 
+        # reference pressure level
         phi_ref_era = integ_geopot(pa_hl_era, era_file.FIS,
                                     era_file[var_name_map['ta']], 
                                     era_file[var_name_map['hus']], 
@@ -255,7 +255,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
 
         delta_phi_ref = phi_ref_pgw - phi_ref_era
 
-        ## load climate delta for reference pressure level
+        ## load climate delta at currently used reference pressure level
         climate_delta_phi_ref = load_delta(delta_input_dir, 'zg',
                             era_file[TIME_ERA], era_step_dt) * CON_G
         climate_delta_phi_ref = climate_delta_phi_ref.sel({PLEV_GCM:p_ref})
