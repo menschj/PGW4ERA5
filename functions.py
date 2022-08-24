@@ -30,7 +30,7 @@ if i_use_xesmf_regridding:
 ##############################################################################
 ##### ARBITRARY FUNCTIONS
 ##############################################################################
-def dt64_to_dt(date):
+def dt64_to_dt(dt64):
     """
     Converts a numpy datetime64 object to a python datetime object 
     Input:
@@ -40,9 +40,9 @@ def dt64_to_dt(date):
     source: 
       https://gist.github.com/blaylockbk/1677b446bc741ee2db3e943ab7e4cabd
     """
-    timestamp = ((date - np.datetime64('1970-01-01T00:00:00'))
+    timestamp = ((dt64 - np.datetime64('1970-01-01T00:00:00Z'))
                  / np.timedelta64(1, 's'))
-    return datetime.utcfromtimestamp(timestamp)
+    return(datetime.utcfromtimestamp(timestamp))
 
 
 ##############################################################################
@@ -136,6 +136,12 @@ def load_delta(delta_input_dir, var_name, era5_date_time,
     ## full climate delta (either daily or monthly)
     full_delta = xr.open_dataset(os.path.join(delta_input_dir,
                             name_base.format(var_name)))
+    ## convert time values to standard Pandas Datetimes
+    ## this is to catch error arising from cftime.DatetimeNoLeap time format
+    ## (https://stackoverflow.com/questions/54462798/cftime-datetimenoleap-object-fails-to-convert-with-pandas-to-datetime)
+    full_delta = full_delta.assign_coords(
+        time=full_delta.indexes['time'].to_datetimeindex()
+    )
 
     ## remove leap year february 29th if in delta
     leap_day = None
