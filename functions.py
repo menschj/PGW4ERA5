@@ -1039,6 +1039,7 @@ def interp_wrapper(origin_grid, target_grid, var_name, i_use_xesmf=0, radius=500
 
 #All intput arrays on era5 grid and all as numpy arrays
 #Land mask will be extracted from sea ice field
+#Returns a numpy array
 def integrate_tos(tos_field, tas_field, land_frac, ice_frac):
     #Save dims to reshape the original grid
     dims = tos_field.shape
