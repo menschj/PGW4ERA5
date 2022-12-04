@@ -888,7 +888,19 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
     gcm_val = gcm_val_raw[nan_mask_curv]
     gcm_lon = gcm_lon_raw[nan_mask_curv]
     gcm_lat = gcm_lat_raw[nan_mask_curv]
+    """"
+    #Boundary conditions
+    gcm_val = np.empty(len(gcm_val_temp)*3)
+    gcm_lon = np.empty(len(gcm_lon_temp)*3)
+    gcm_lat = np.empty(len(gcm_lat_temp)*3)
+    
+    gcm_val[:] = np.tile(gcm_val_temp, 3)
+    gcm_lat[:] = np.tile(gcm_lat_temp, 3)
+    gcm_lon[:] = np.tile(gcm_lon_temp, 3)
 
+    gcm_lon[:len(gcm_lon_temp)] -= 180
+    gcm_lon[2*len(gcm_lon_temp):] += 180
+    """
     # Convert lon/lat degrees to lon/lat kilometers
 
     #First save the sign of the lon and lat array
@@ -959,7 +971,6 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
     points['values'] = gcm_val
     #Core interpolation: mask land values with empty and only consider points in a 50km radius
     grid = grid.interpolate(points, null_value=np.nan,radius=radius)
-    
     #-------------------
     #POSTPROCESSING ERA5 DATA
     #-------------------
@@ -972,7 +983,7 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
     # Reshape back to matrix
     return result.reshape((len(era5_lat_raw),len(era5_lon_raw)))
 
-def interp_wrapper(origin_grid, target_grid, var_name, i_use_xesmf=0, radius=300000):
+def interp_wrapper(origin_grid, target_grid, var_name, i_use_xesmf=0, radius=50000):
     """Interpolation wrapper that allows for each variable to be assigned a custom scheme
 
     This function implements for different variables different kinds of interpoaltion. Default is bi-linear
@@ -1003,7 +1014,7 @@ def interp_wrapper(origin_grid, target_grid, var_name, i_use_xesmf=0, radius=300
         #Interpolate all 12 months indivdually
         result = np.empty((12,len(target_grid[LAT_ERA]), len(target_grid[LON_ERA])))
         for i in range(12):
-            result[i,:,:] = nan_ignoring_interp(land_fraction, tos_values[i,:,:], radius=300000)
+            result[i,:,:] = nan_ignoring_interp(land_fraction, tos_values[i,:,:], radius=radius)
         
         #Save into xr.Dataset
         ds = xr.Dataset(
