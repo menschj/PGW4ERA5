@@ -888,7 +888,9 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
     gcm_val = gcm_val_raw[nan_mask_curv]
     gcm_lon = gcm_lon_raw[nan_mask_curv]
     gcm_lat = gcm_lat_raw[nan_mask_curv]
+    
     """"
+    #Buggy, need fix
     #Boundary conditions
     gcm_val = np.empty(len(gcm_val_temp)*3)
     gcm_lon = np.empty(len(gcm_lon_temp)*3)
