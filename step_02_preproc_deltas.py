@@ -10,7 +10,7 @@ import os, argparse
 import xarray as xr
 import numpy as np
 from pathlib import Path
-from functions import filter_data, regrid_lat_lon
+from functions import filter_data, regrid_lat_lon, interp_wrapper
 from settings import (
     i_debug,
     file_name_bases,
@@ -78,7 +78,7 @@ parser.add_argument('-v', '--var_names', type=str,
             help='Variable names (e.g. tas) to process. Separate ' +
             'multiple variable names with "," (e.g. tas,ta). Default is ' +
             'to process all required variables ta,hur,ua,va,zg,hurs,tas,ps.',
-            default='ta,hur,ua,va,zg,hurs,tas,ps')
+            default='ta,hur,ua,va,zg,hurs,tas,ps,tos')
 
 
 args = parser.parse_args()
@@ -106,6 +106,10 @@ print('Run {} for variable names {}.'.format(
 # iterate over all variables to preprocess
 for var_name in var_names:
     print(var_name)
+    try:
+        ds_era5 = xr.open_dataset(args.era5_file_path)
+    except:
+        raise("Missing interpolation target file")
     # iterate over the two types of GCM data files
     # (CTRL and SCEN-CTRL)
     for clim_period in ['CTRL', 'SCEN-CTRL']:
@@ -123,13 +127,11 @@ for var_name in var_names:
 
         ## regridding
         elif args.processing_step == 'regridding':
+            try:
+                ds_gcm = xr.open_dataset(inp_file)
+            except:
+                raise("Files for variable " + var_name + " are missing")
             
-            ds_gcm = xr.open_dataset(inp_file)
-            ds_era5 = xr.open_dataset(args.era5_file_path)
-
-            ds_gcm = regrid_lat_lon(ds_gcm, ds_era5, var_name,
-                                    method='bilinear',
-                                    i_use_xesmf=i_use_xesmf_regridding)
-
+            ds_gcm = interp_wrapper(ds_gcm,ds_era5, var_name, i_use_xesmf=i_use_xesmf_regridding)
+            
             ds_gcm.to_netcdf(out_file)
-
