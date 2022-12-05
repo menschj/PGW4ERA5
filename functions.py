@@ -21,6 +21,7 @@ from settings import (
     file_name_bases,
     TIME_ERA, LEV_ERA, HLEV_ERA, LON_ERA, LAT_ERA,
     TIME_GCM, PLEV_GCM, LON_GCM, LAT_GCM,
+    LAT_GCM_OCEAN, LON_GCM_OCEAN, TIME_GCM_OCEAN,
 )
 if i_use_xesmf_regridding:
     import xesmf as xe
@@ -985,7 +986,7 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
     # Reshape back to matrix
     return result.reshape((len(era5_lat_raw),len(era5_lon_raw)))
 
-def interp_wrapper(origin_grid, target_grid, var_name, i_use_xesmf=0, radius=50000):
+def interp_wrapper(origin_grid, target_grid, var_name, i_use_xesmf=0, radius=300000):
     """Interpolation wrapper that allows for each variable to be assigned a custom scheme
 
     This function implements for different variables different kinds of interpoaltion. Default is bi-linear
@@ -1037,10 +1038,28 @@ def interp_wrapper(origin_grid, target_grid, var_name, i_use_xesmf=0, radius=500
                         i_use_xesmf=i_use_xesmf)
     return ds
 
-#All intput arrays on era5 grid and all as numpy arrays
-#Land mask will be extracted from sea ice field
-#Returns a numpy array
 def integrate_tos(tos_field, tas_field, land_frac, ice_frac):
+    """Combines TOS and TAS temperature as a weighted according to land and ocean contribution
+    
+    This functions assumes that all fields are on the same grid!
+
+    Parameters
+    ----------
+    tos_field : 2d.nparray
+        Passes TOS field on ERA5 grid
+    tas_field : 2d.nparray
+        Passes TAS field on ERA5 grid
+    land_frac : 2d.nparray
+        Passes land fraction on ERA5 grid
+    ice_field : 2d.nparray
+        Passes sea ice fraction on ERA5 grid
+
+    
+    Returns
+    -------
+    combined_tas : 2d.nparray
+        Returns combined temperature fields
+    """
     #Save dims to reshape the original grid
     dims = tos_field.shape
     #Ocean mask
