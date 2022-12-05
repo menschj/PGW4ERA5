@@ -154,7 +154,7 @@ experiments=($era_climate_experiment $future_climate_experiment)
 
 ##############################################################################
 
-out_dir=$out_base_dir/$gcm_name
+out_dir=$out_base_dir/$table_ID/$gcm_name
 echo $out_dir
 mkdir -p $out_dir
 
