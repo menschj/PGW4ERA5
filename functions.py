@@ -7,11 +7,12 @@ authors		    Before 2022: original developments by Roman Brogli
 """
 ##############################################################################
 import os, math
+import pandas as pd
 import xarray as xr
 import numpy as np
 from numba import njit
 from datetime import datetime,timedelta
-from constants import CON_RD, CON_G
+from constants import CON_RD,CON_G,CON_MW_MD
 from settings import (
     i_debug,
     i_use_xesmf_regridding,
@@ -48,20 +49,91 @@ def dt64_to_dt(dt64):
 ##############################################################################
 ##### PHYSICAL COMPUTATIONS
 ##############################################################################
+
+def specific_humidity_to_vapor_pressure(hus, pa):
+    """
+    Compute vapor pressure
+    https://cran.r-project.org/web/packages/humidity/vignettes/humidity-measures.html
+    """
+    vapp = hus * pa / (CON_MW_MD + 0.378 * hus)
+    return(vapp)
+
+def vapor_pressure_to_specific_humidity(vapp, pa):
+    """
+    Compute vapor pressure
+    https://cran.r-project.org/web/packages/humidity/vignettes/humidity-measures.html
+    """
+    hus = CON_MW_MD * vapp / (pa - (1 - CON_MW_MD) * vapp)
+    return(hus)
+
+def saturation_vapor_pressure_water_or_ice(pa, ta, water=True):
+    """
+    Compute saturation vapor pressure over water or ice 
+    according to ECMWF IFS documentation (7.93).
+    """
+    T0 = 273.16     # K
+    if water:
+        a1 = 611.21 # Pa
+        a3 = 17.502 # 1
+        a4 = 32.19  # K
+    else: # over ice
+        a1 = 611.21 # Pa
+        a3 = 22.587 # 1
+        a4 = -0.7   # K
+    vapp_sat_x = a1 * np.exp(a3 * (ta - T0) / (ta - a4))
+    return(vapp_sat_x)
+
+def saturation_vapor_pressure_water_and_ice(pa, ta):
+    """
+    Compute saturation vapor pressure according to ECMWF IFS documentation (7.92).
+    """
+    T0 = 273.16     # K
+    Ti = 250.16     # K
+    alpha = xr.full_like(ta, np.nan)
+    alpha = xr.where(ta >= T0, 1, alpha)
+    alpha = xr.where(ta <= Ti, 0, alpha)
+    alpha = xr.where((ta < T0) & (ta > Ti), np.power((ta - Ti)/(T0 - Ti), 2.), alpha)
+    vapp_sat = (
+        alpha * saturation_vapor_pressure_water_or_ice(pa, ta, water=True) +
+        (1 - alpha) * saturation_vapor_pressure_water_or_ice(pa, ta, water=False)
+    )
+    return(vapp_sat)
+
 def specific_to_relative_humidity(hus, pa, ta):
     """
-    Compute relative humidity from specific humidity.
+    Compute relative humidity from specific humidity
+    following the implementation in the IFS model.
     """
-    hur = 0.263 * pa * hus *(np.exp(17.67*(ta - 273.15)/(ta-29.65)))**(-1)
+    hur = (
+        specific_humidity_to_vapor_pressure(hus, pa) / 
+        saturation_vapor_pressure_water_and_ice(pa, ta)
+    ) * 100
     return(hur)
-
 
 def relative_to_specific_humidity(hur, pa, ta):
     """
-    Compute specific humidity from relative humidity.
+    Compute relative humidity from specific humidity
+    following the implementation in the IFS model.
     """
-    hus = (hur  * np.exp(17.67 * (ta - 273.15)/(ta - 29.65))) / (0.263 * pa)
+    vapp = hur / 100 * saturation_vapor_pressure_water_and_ice(pa, ta)
+    hus = vapor_pressure_to_specific_humidity(vapp, pa)
     return(hus)
+
+
+#def specific_to_relative_humidity(hus, pa, ta):
+#    """
+#    Compute relative humidity from specific humidity.
+#    """
+#    hur = 0.263 * pa * hus *(np.exp(17.67*(ta - 273.15)/(ta-29.65)))**(-1)
+#    return(hur)
+#
+#
+#def relative_to_specific_humidity(hur, pa, ta):
+#    """
+#    Compute specific humidity from relative humidity.
+#    """
+#    hus = (hur  * np.exp(17.67 * (ta - 273.15)/(ta - 29.65))) / (0.263 * pa)
+#    return(hus)
 
 
 def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
@@ -98,7 +170,11 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
     # determine level below reference pressure
     p_diff = pa_hl - p_ref
     p_diff = p_diff.where(p_diff >= 0, np.nan)
-    ind_ref_star = p_diff.argmin(dim=HLEV_ERA)
+    try:
+        ind_ref_star = p_diff.argmin(dim=HLEV_ERA)
+    except ValueError :
+        raise ValueError("The p_ref locally lies below the surface. Please set a lower reference pressue (p_ref_inp) in settings.py")
+    
     hl_ref_star = p_diff[HLEV_ERA].isel({HLEV_ERA:ind_ref_star})
     # get pressure and geopotential of that level
     p_ref_star = pa_hl.sel({HLEV_ERA:hl_ref_star})
@@ -140,8 +216,12 @@ def load_delta(delta_input_dir, var_name, era5_date_time,
     ## this is to catch error arising from cftime.DatetimeNoLeap time format
     ## (https://stackoverflow.com/questions/54462798/cftime-datetimenoleap-object-fails-to-convert-with-pandas-to-datetime)
     full_delta = full_delta.assign_coords(
-        time=full_delta.indexes['time'].to_datetimeindex()
+        time=full_delta.indexes['time']    #? FIX (removed .to_timedateindex())
     )
+    #if not isinstance(full_delta.indexes['time'], pd.core.indexes.datetimes.DatetimeIndex):
+    #    full_delta = full_delta.assign_coords(
+    #        time=full_delta.indexes['time'].to_datetimeindex()
+    #    )
 
     ## remove leap year february 29th if in delta
     leap_day = None
@@ -157,7 +237,7 @@ def load_delta(delta_input_dir, var_name, era5_date_time,
         # replace delta year values with year of current target_date_time
         for i in range(len(full_delta.time)):
             full_delta.time.values[i] = dt64_to_dt(
-                        full_delta.time[i]).replace(
+                        full_delta.time.values[i]).replace(    #? FIX (added .values[])
                                 year=target_date_time.year)
 
         # find time index of climate delta before target time
@@ -177,7 +257,7 @@ def load_delta(delta_input_dir, var_name, era5_date_time,
             ind_before = -1
             before = full_delta.isel(time=ind_before)
             before.time.values = dt64_to_dt(
-                        before.time).replace(
+                        before.time.values).replace(    #? FIX (added .values[])
                                 year=target_date_time.year-1)
 
         # find time index of climate delta after target time
@@ -197,7 +277,7 @@ def load_delta(delta_input_dir, var_name, era5_date_time,
             ind_after = 0
             after = full_delta.isel(time=ind_after)
             after.time.values = dt64_to_dt(
-                        after.time).replace(
+                        after.time.values).replace(    #? FIX (added .values[])
                                 year=target_date_time.year+1)
 
         # if target time is exactly contained in climate delta
@@ -356,7 +436,7 @@ def vert_interp_delta(delta, target_P, delta_sfc=None, ps_hist=None,
 
     # make sure there is no extrapolation at the model top
     # unless these levels are anyways not important for the user
-    # and she/he manually sets ignore_top_pressure_error=True
+    # and they manually set ignore_top_pressure_error=True
     if np.min(target_P) < np.min(source_P):
         if not ignore_top_pressure_error:
             raise ValueError('ERA5 top pressure is lower than '+
@@ -590,7 +670,7 @@ def filter_data(annualcycleraw, variablename_to_smooth, outputpath):
 		xgrids = Diff.shape[2]
 		levels = 0
 	else:
-		sys.exit('Wrog dimensions of input file should be 3 or 4-D')
+		sys.exit('Wrong dimensions of input file should be 3 or 4-D')
 
 
 	if len(Diff.shape) == 4:
@@ -814,7 +894,7 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
         ds_gcm = ds_gcm.interp({LON_GCM:targ_lon})
 
     ## test for NaN
-    if np.sum(np.isnan(ds_gcm[var_name])).values > 0:
-        raise ValueError('NaN in GCM dataset after interpolation.')
+    #if np.sum(np.isnan(ds_gcm[var_name])).values > 0:
+    #    raise ValueError('NaN in GCM dataset after interpolation.')
 
     return(ds_gcm)
