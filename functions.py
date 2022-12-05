@@ -888,21 +888,8 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
     gcm_val = gcm_val_raw[nan_mask_curv]
     gcm_lon = gcm_lon_raw[nan_mask_curv]
     gcm_lat = gcm_lat_raw[nan_mask_curv]
-    
-    """"
-    #Buggy, need fix
-    #Boundary conditions
-    gcm_val = np.empty(len(gcm_val_temp)*3)
-    gcm_lon = np.empty(len(gcm_lon_temp)*3)
-    gcm_lat = np.empty(len(gcm_lat_temp)*3)
-    
-    gcm_val[:] = np.tile(gcm_val_temp, 3)
-    gcm_lat[:] = np.tile(gcm_lat_temp, 3)
-    gcm_lon[:] = np.tile(gcm_lon_temp, 3)
 
-    gcm_lon[:len(gcm_lon_temp)] -= 180
-    gcm_lon[2*len(gcm_lon_temp):] += 180
-    """
+
     # Convert lon/lat degrees to lon/lat kilometers
 
     #First save the sign of the lon and lat array
@@ -913,18 +900,31 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
     #Convert to km based scale. First two return arguments can be ignored as they are not relevant for this task
     #and this function is still faster then alternatives due to numpy vectorizing
     del1, del2, gcm_lat_meter = geod.inv(gcm_lon, np.zeros(len(gcm_lat)), gcm_lon, gcm_lat)
-    del1, del2, gcm_lon_meter = geod.inv(np.zeros(len(gcm_lat)), gcm_lat, gcm_lon, gcm_lat) 
+    del1, del2, gcm_lon_meter = geod.inv(np.zeros(len(gcm_lat)), gcm_lat, gcm_lon, gcm_lat)
+    del1, del2, lon_offset    = geod.inv(np.zeros(len(gcm_lat)), gcm_lat, np.ones(len(gcm_lat))*180, gcm_lat)
     
     #Add the signs back to the distances, so that we can have minus coords
     gcm_lat_meter = np.multiply(gcm_lat_meter, sign_map_lat)
     gcm_lon_meter = np.multiply(gcm_lon_meter, sign_map_lon)
+    
+    #Implement Boundary points
+    gcm_val_bd = np.empty(len(gcm_val)*3)
+    gcm_lon_bd = np.empty(len(gcm_lon_meter)*3)
+    gcm_lat_bd = np.empty(len(gcm_lat_meter)*3)
+    
+    gcm_val_bd[:] = np.tile(gcm_val, 3)
+    gcm_lat_bd[:] = np.tile(gcm_lat_meter, 3)
+    gcm_lon_bd[:] = np.tile(gcm_lon_meter, 3)
+
+    gcm_lon_bd[:len(gcm_lon_meter)] -= lon_offset * 2
+    gcm_lon_bd[2*len(gcm_lon_meter):] += lon_offset * 2
 
 
     #Create grid matrix for further use in the interpolation scheme
     #3rd dim is needed for the interpolation library but can be ignored
-    curv_points = np.zeros((gcm_lat_meter.shape[0], 3))
-    curv_points[:,0] = gcm_lat_meter
-    curv_points[:,1] = gcm_lon_meter
+    curv_points = np.zeros((gcm_lat_bd.shape[0], 3))
+    curv_points[:,0] = gcm_lat_bd
+    curv_points[:,1] = gcm_lon_bd
 
     #-------------------
     #PREPROCESSING ERA5 DATA
@@ -970,7 +970,7 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
     grid = PolyData(era5_points)
     points = PolyData(curv_points)
     #Fill gcm sst into the grid
-    points['values'] = gcm_val
+    points['values'] = gcm_val_bd
     #Core interpolation: mask land values with empty and only consider points in a 50km radius
     grid = grid.interpolate(points, null_value=np.nan,radius=radius)
     #-------------------
