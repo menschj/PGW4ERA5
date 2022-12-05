@@ -7,6 +7,7 @@ authors		    Before 2022: original developments by Roman Brogli
 """
 ##############################################################################
 import os, math
+import pandas as pd
 import xarray as xr
 import numpy as np
 from pyvista import PolyData
@@ -14,7 +15,7 @@ from pyproj import Geod
 
 from numba import njit
 from datetime import datetime,timedelta
-from constants import CON_RD, CON_G
+from constants import CON_RD,CON_G,CON_MW_MD
 from settings import (
     i_debug,
     i_use_xesmf_regridding,
@@ -52,20 +53,91 @@ def dt64_to_dt(dt64):
 ##############################################################################
 ##### PHYSICAL COMPUTATIONS
 ##############################################################################
+
+def specific_humidity_to_vapor_pressure(hus, pa):
+    """
+    Compute vapor pressure
+    https://cran.r-project.org/web/packages/humidity/vignettes/humidity-measures.html
+    """
+    vapp = hus * pa / (CON_MW_MD + 0.378 * hus)
+    return(vapp)
+
+def vapor_pressure_to_specific_humidity(vapp, pa):
+    """
+    Compute vapor pressure
+    https://cran.r-project.org/web/packages/humidity/vignettes/humidity-measures.html
+    """
+    hus = CON_MW_MD * vapp / (pa - (1 - CON_MW_MD) * vapp)
+    return(hus)
+
+def saturation_vapor_pressure_water_or_ice(pa, ta, water=True):
+    """
+    Compute saturation vapor pressure over water or ice 
+    according to ECMWF IFS documentation (7.93).
+    """
+    T0 = 273.16     # K
+    if water:
+        a1 = 611.21 # Pa
+        a3 = 17.502 # 1
+        a4 = 32.19  # K
+    else: # over ice
+        a1 = 611.21 # Pa
+        a3 = 22.587 # 1
+        a4 = -0.7   # K
+    vapp_sat_x = a1 * np.exp(a3 * (ta - T0) / (ta - a4))
+    return(vapp_sat_x)
+
+def saturation_vapor_pressure_water_and_ice(pa, ta):
+    """
+    Compute saturation vapor pressure according to ECMWF IFS documentation (7.92).
+    """
+    T0 = 273.16     # K
+    Ti = 250.16     # K
+    alpha = xr.full_like(ta, np.nan)
+    alpha = xr.where(ta >= T0, 1, alpha)
+    alpha = xr.where(ta <= Ti, 0, alpha)
+    alpha = xr.where((ta < T0) & (ta > Ti), np.power((ta - Ti)/(T0 - Ti), 2.), alpha)
+    vapp_sat = (
+        alpha * saturation_vapor_pressure_water_or_ice(pa, ta, water=True) +
+        (1 - alpha) * saturation_vapor_pressure_water_or_ice(pa, ta, water=False)
+    )
+    return(vapp_sat)
+
 def specific_to_relative_humidity(hus, pa, ta):
     """
-    Compute relative humidity from specific humidity.
+    Compute relative humidity from specific humidity
+    following the implementation in the IFS model.
     """
-    hur = 0.263 * pa * hus *(np.exp(17.67*(ta - 273.15)/(ta-29.65)))**(-1)
+    hur = (
+        specific_humidity_to_vapor_pressure(hus, pa) / 
+        saturation_vapor_pressure_water_and_ice(pa, ta)
+    ) * 100
     return(hur)
-
 
 def relative_to_specific_humidity(hur, pa, ta):
     """
-    Compute specific humidity from relative humidity.
+    Compute relative humidity from specific humidity
+    following the implementation in the IFS model.
     """
-    hus = (hur  * np.exp(17.67 * (ta - 273.15)/(ta - 29.65))) / (0.263 * pa)
+    vapp = hur / 100 * saturation_vapor_pressure_water_and_ice(pa, ta)
+    hus = vapor_pressure_to_specific_humidity(vapp, pa)
     return(hus)
+
+
+#def specific_to_relative_humidity(hus, pa, ta):
+#    """
+#    Compute relative humidity from specific humidity.
+#    """
+#    hur = 0.263 * pa * hus *(np.exp(17.67*(ta - 273.15)/(ta-29.65)))**(-1)
+#    return(hur)
+#
+#
+#def relative_to_specific_humidity(hur, pa, ta):
+#    """
+#    Compute specific humidity from relative humidity.
+#    """
+#    hus = (hur  * np.exp(17.67 * (ta - 273.15)/(ta - 29.65))) / (0.263 * pa)
+#    return(hus)
 
 
 def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
@@ -105,7 +177,7 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
     try:
         ind_ref_star = p_diff.argmin(dim=HLEV_ERA)
     except ValueError :
-        raise ValueError("The p_ref value intersectes the topology and needs to be lowered.")     #? POTENTIAL ISSUE
+        raise ValueError("p_ref locally lies below the surface. Please set a lower reference pressue (p_ref_inp) in settings.py")
     
     hl_ref_star = p_diff[HLEV_ERA].isel({HLEV_ERA:ind_ref_star})
     # get pressure and geopotential of that level
@@ -137,7 +209,7 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
 ##############################################################################
 def load_delta(delta_input_dir, var_name, era5_date_time, 
                target_date_time=None,
-               name_base=file_name_bases['SCEN-CTRL']):
+               name_base=file_name_bases['SCEN-HIST']):
     """
     Load a climate delta and if target_date_time is given,
     interpolate it to that date and time of the year.
@@ -151,6 +223,10 @@ def load_delta(delta_input_dir, var_name, era5_date_time,
     full_delta = full_delta.assign_coords(
         time=full_delta.indexes['time']    #? FIX (removed .to_timedateindex())
     )
+    #if not isinstance(full_delta.indexes['time'], pd.core.indexes.datetimes.DatetimeIndex):
+    #    full_delta = full_delta.assign_coords(
+    #        time=full_delta.indexes['time'].to_datetimeindex()
+    #    )
 
     ## remove leap year february 29th if in delta
     leap_day = None
@@ -264,7 +340,7 @@ def load_delta_interp(delta_input_dir, var_name, target_P,
         - load a climate delta
         - for specific variables (ta and hur) also load surface
           climate delta,
-          as well as CTRL surface pressure. This is to extend
+          as well as HIST surface pressure. This is to extend
           the 3D climate deltas with surface values which makes
           the interpolation to the ERA5 model levels more precise.
         - vertically interpolate climate deltas to ERA5 model levels
@@ -281,7 +357,7 @@ def load_delta_interp(delta_input_dir, var_name, target_P,
                             era5_date_time, target_date_time)
         ps_hist = load_delta(delta_input_dir, 'ps', 
                             era5_date_time, target_date_time,
-                            name_base=file_name_bases['CTRL'])
+                            name_base=file_name_bases['HIST'])
     else:
         delta_sfc = None
         ps_hist = None
@@ -296,7 +372,7 @@ def replace_delta_sfc(source_P, ps_hist, delta, delta_sfc):
     """
     In the 3D climate deltas, replace the value just below
     the surface by the surface climate delta value and insert
-    it at CTRL surface pressure. This improves the precision
+    it at HIST surface pressure. This improves the precision
     of the climate deltas during interpolation to the ERA5 model levels.
     All 3D climate delta values below the historical surface pressure
     are set to the surface value (constant extrapolation). This is
@@ -843,7 +919,7 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
 
     ## test for NaN
     #if np.sum(np.isnan(ds_gcm[var_name])).values > 0:
-        #raise ValueError('NaN in GCM dataset after interpolation.')
+    #    raise ValueError('NaN in GCM dataset after interpolation.')
 
     return(ds_gcm)
 
