@@ -42,8 +42,8 @@ LEV_GCM         = 'lev'
 
 # dimension names in ocean GCM
 TIME_GCM_OCEAN  = 'time'
-LON_GCM_OCEAN   = 'lon'
-LAT_GCM_OCEAN   = 'lat'
+LON_GCM_OCEAN   = 'longitude'
+LAT_GCM_OCEAN   = 'latitude'
 
 # map from CMOR variable names
 # to variable names used in ERA5 files being process.

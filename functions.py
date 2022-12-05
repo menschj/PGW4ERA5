@@ -875,8 +875,8 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
     #-------------------
 
     #Construct lon and lat arrays for point cloud by flattening them into an array
-    gcm_lat_raw = da_delta.coords['latitude'].values.reshape(-1)
-    gcm_lon_raw = da_delta.coords['longitude'].values.reshape(-1)
+    gcm_lat_raw = da_delta.coords[LAT_GCM_OCEAN].values.reshape(-1)
+    gcm_lon_raw = da_delta.coords[LON_GCM_OCEAN].values.reshape(-1)
     gcm_val_raw = da_delta.values.reshape(-1)
 
     # Change to -180,180 range. This simplifies the wrap-around from 0-360
@@ -933,8 +933,8 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
 
     #Extract Era5 values from xarray
     era5_val_raw = da_era5_land_fr.values.reshape(-1)
-    era5_lat_raw = da_era5_land_fr.coords['lat'].values
-    era5_lon_raw = da_era5_land_fr.coords['lon'].values
+    era5_lat_raw = da_era5_land_fr.coords[LAT_ERA].values
+    era5_lon_raw = da_era5_land_fr.coords[LON_ERA].values
 
     # Change to -180,180 range if needed
     for i in range(len(era5_lon_raw)):
