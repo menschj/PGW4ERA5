@@ -972,7 +972,7 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
     points = PolyData(curv_points)
     #Fill gcm sst into the grid
     points['values'] = gcm_val_bd
-    #Core interpolation: mask land values with empty and only consider points in a 50km radius
+    #Core interpolation: mask land values with empty and only consider points in a certain radius
     grid = grid.interpolate(points, null_value=np.nan,radius=radius)
     #-------------------
     #POSTPROCESSING ERA5 DATA
