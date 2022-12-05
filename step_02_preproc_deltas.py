@@ -17,6 +17,8 @@ from settings import (
     LON_ERA, LAT_ERA,
     TIME_GCM, PLEV_GCM, LON_GCM, LAT_GCM,
     i_use_xesmf_regridding,
+    nan_interp_kernel_radius,
+    nan_interp_sharpness,
 )
 ##############################################################################
 
@@ -119,6 +121,8 @@ for var_name in var_names:
         inp_file = os.path.join(args.input_dir, var_file_name)
         out_file = os.path.join(args.output_dir, var_file_name)
 
+        # open ERA5 file with target grid
+        ds_era5 = xr.open_dataset(args.era5_file_path)
 
         ## smoothing
         if args.processing_step == 'smoothing':
@@ -132,6 +136,13 @@ for var_name in var_names:
             except:
                 raise("Files for variable " + var_name + " are missing")
             
-            ds_gcm = interp_wrapper(ds_gcm,ds_era5, var_name, i_use_xesmf=i_use_xesmf_regridding)
+            ds_gcm = interp_wrapper(
+                ds_gcm, 
+                ds_era5, 
+                var_name, 
+                i_use_xesmf=i_use_xesmf_regridding,
+                nan_interp_kernel_radius=nan_interp_kernel_radius,
+                nan_interp_sharpness=nan_interp_sharpness,
+            )
             
             ds_gcm.to_netcdf(out_file)

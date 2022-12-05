@@ -923,7 +923,7 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
 
     return(ds_gcm)
 
-def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
+def nan_ignoring_interp(da_era5_land_fr, da_delta, kernel_radius, sharpness):
     """Point cloud based NaN-ignoring interpolation from unstructured to regular lon/lat grid
 
     This function takes an xarray 2D array with individual lon/lat coordinates and 
@@ -1037,7 +1037,7 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
     era5_points[:,0] = era5_lat_meter
     era5_points[:,1] = era5_lon_meter
 
-    # Create masks pure_ocean and frac_ocean for use of the mixed scheme
+    # Create masks pure_ocean and frac_ocean for use of the masking land values later on
     land_map = np.where(era5_val_raw > 0.7)[0]
 
     #-------------------
@@ -1049,7 +1049,12 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
     #Fill gcm sst into the grid
     points['values'] = gcm_val_bd
     #Core interpolation: mask land values with empty and only consider points in a certain radius
-    grid = grid.interpolate(points, null_value=np.nan,radius=radius)
+    grid = grid.interpolate(
+        points, 
+        null_value=np.nan,
+        radius=kernel_radius, 
+        sharpness=sharpness
+    )
     #-------------------
     #POSTPROCESSING ERA5 DATA
     #-------------------
@@ -1062,7 +1067,14 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
     # Reshape back to matrix
     return result.reshape((len(era5_lat_raw),len(era5_lon_raw)))
 
-def interp_wrapper(origin_grid, target_grid, var_name, i_use_xesmf=0, radius=300000):
+def interp_wrapper(
+    origin_grid, 
+    target_grid, 
+    var_name, 
+    i_use_xesmf=0, 
+    nan_interp_kernel_radius=300000,
+    nan_interp_sharpness=3,
+    ):
     """Interpolation wrapper that allows for each variable to be assigned a custom scheme
 
     This function implements for different variables different kinds of interpoaltion. Default is bi-linear
@@ -1093,7 +1105,12 @@ def interp_wrapper(origin_grid, target_grid, var_name, i_use_xesmf=0, radius=300
         #Interpolate all 12 months indivdually
         result = np.empty((12,len(target_grid[LAT_ERA]), len(target_grid[LON_ERA])))
         for i in range(12):
-            result[i,:,:] = nan_ignoring_interp(land_fraction, tos_values[i,:,:], radius=radius)
+            result[i,:,:] = nan_ignoring_interp(
+                land_fraction, 
+                tos_values[i,:,:], 
+                kernel_radius=nan_interp_kernel_radius,
+                sharpness=nan_interp_sharpness
+            )
         
         #Save into xr.Dataset
         ds = xr.Dataset(
@@ -1101,8 +1118,8 @@ def interp_wrapper(origin_grid, target_grid, var_name, i_use_xesmf=0, radius=300
                 tos=(["time","lat", "lon"], result),
             ),
             coords=dict(
-                lat=(["lat"], target_grid[LAT_ERA]),
-                lon=(["lon"], target_grid[LON_ERA]),
+                lat=(["lat"], target_grid[LAT_ERA].data),
+                lon=(["lon"], target_grid[LON_ERA].data),
                 time=origin_grid[TIME_GCM]
             ),
             attrs=dict(description="SST on ERA5 grid", units="K", long_name="Sea Surface Temperature"),

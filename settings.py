@@ -86,6 +86,15 @@ var_name_map = {
 # numerical precision
 i_use_xesmf_regridding = 0
 
+## Nan-Ingoring kernel interpolation
+# maximum kernel radius
+# higher values imply that remote lakes (and bays) without GCM SST data will
+# receive data from further remote GCM SST grid points instead of falling
+# back to the tas (near surface temperature) climate delta
+nan_interp_kernel_radius = 300000 # m
+# sharpness: decrease (increase) for smoother (sharper) interpolation
+nan_interp_sharpness = 4
+
 
 ### SURFACE PRESSURE ADJUSTMENT SETTINGS 
 ##########################################################################
