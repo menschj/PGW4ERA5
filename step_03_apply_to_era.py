@@ -21,6 +21,7 @@ from functions import (
     integ_geopot,
     interp_logp_4d,
     determine_p_ref,
+    integrate_tos
     )
 from constants import CON_G, CON_RD
 from parallel import IterMP
@@ -100,7 +101,12 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         print('update {}'.format(var_name))
     delta_tas = load_delta(delta_input_dir, var_name,
                            era_file[TIME_ERA], era_step_dt)
-    era_file[var_name_map[var_name]].values += delta_tas.values
+    delta_tos = load_delta(delta_input_dir, 'tos',
+                           era_file[TIME_ERA], era_step_dt)
+    delta_combined = integrate_tos(delta_tos.values,delta_tas.values, 
+                  era_file['FR_LAND'][0,:,:].values, era_file['FR_SEA_ICE'][0,:,:].values)
+    era_file[var_name_map[var_name]].values += delta_combined
+    delta_tas.values = delta_combined
     # store delta for output in case of --debug_mode = interpolate_full
     deltas[var_name] = delta_tas
 
@@ -256,6 +262,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         delta_phi_ref = phi_ref_pgw - phi_ref_era
 
         ## load climate delta at currently used reference pressure level
+        #?Load delta is roughly 0.2s from storage and 0.07 from RAM
         climate_delta_phi_ref = load_delta(delta_input_dir, 'zg',
                             era_file[TIME_ERA], era_step_dt) * CON_G
         climate_delta_phi_ref = climate_delta_phi_ref.sel({PLEV_GCM:p_ref})
@@ -365,23 +372,24 @@ def debug_interpolate_time(
     var_names = ['tas','hurs','ps','ta','hur','ua','va','zg']
     for var_name in var_names:
         print(var_name)
+        #name_base = climate_delta_file_name_base
         ## for ps take era climatology file while for all other variables
         ## take climate delta file
         #if var_name == 'ps':
         #    name_base = era_climate_file_name_base
         #else:
         #    name_base = climate_delta_file_name_base
-        name_base = climate_delta_file_name_base
+        #name_base = climate_delta_file_name_base
         # create gcm input file name (excluding ".nc")
-        gcm_file_name = name_base.format(var_name).split('.nc')[0]
+        #?gcm_file_name = name_base.format(var_name).split('.nc')[0]
         # creat output file name
         out_file_path = os.path.join(Path(out_era_file_path).parents[0],
-                                    '{}_{}'.format(gcm_file_name, 
+                                    '{}_{}_{}'.format("delta",var_name,#?gcm_file_name, 
                                         Path(out_era_file_path).name))
         # load climate delta interpolated in time only
         delta = load_delta(delta_input_dir, var_name, era_file[TIME_ERA], 
-                       target_date_time=era_step_dt,
-                       name_base=name_base)
+                       target_date_time=era_step_dt)
+                       #? name_base=name_base)
         # convert to dataset
         delta = delta.to_dataset(name=var_name)
 

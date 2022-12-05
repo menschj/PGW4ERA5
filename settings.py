@@ -40,6 +40,11 @@ LAT_GCM         = 'lat'
 PLEV_GCM        = 'plev'
 LEV_GCM         = 'lev'
 
+# dimension names in ocean GCM
+TIME_GCM_OCEAN  = 'time'
+LON_GCM_OCEAN   = 'longitude'
+LAT_GCM_OCEAN   = 'latitude'
+
 # map from CMOR variable names
 # to variable names used in ERA5 files being process.
 var_name_map = {
@@ -90,7 +95,7 @@ i_use_xesmf_regridding = 0
 # with only 6 vertical levels between 1000-500 hPa), settting
 # p_ref_inp = None may be better. See publication
 # for more information.
-p_ref_inp = 50000 # Pa
+p_ref_inp = 30000 # Pa
 #p_ref_inp = None
 # surface pressure adjustment factor in the iterative routine
 adj_factor = 0.95

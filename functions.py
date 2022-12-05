@@ -10,6 +10,9 @@ import os, math
 import pandas as pd
 import xarray as xr
 import numpy as np
+from pyvista import PolyData
+from pyproj import Geod
+
 from numba import njit
 from datetime import datetime,timedelta
 from constants import CON_RD,CON_G,CON_MW_MD
@@ -19,6 +22,7 @@ from settings import (
     file_name_bases,
     TIME_ERA, LEV_ERA, HLEV_ERA, LON_ERA, LAT_ERA,
     TIME_GCM, PLEV_GCM, LON_GCM, LAT_GCM,
+    LAT_GCM_OCEAN, LON_GCM_OCEAN, TIME_GCM_OCEAN,
 )
 if i_use_xesmf_regridding:
     import xesmf as xe
@@ -173,7 +177,7 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
     try:
         ind_ref_star = p_diff.argmin(dim=HLEV_ERA)
     except ValueError :
-        raise ValueError("The p_ref locally lies below the surface. Please set a lower reference pressue (p_ref_inp) in settings.py")
+        raise ValueError("p_ref locally lies below the surface. Please set a lower reference pressue (p_ref_inp) in settings.py")
     
     hl_ref_star = p_diff[HLEV_ERA].isel({HLEV_ERA:ind_ref_star})
     # get pressure and geopotential of that level
@@ -185,6 +189,7 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
     phi_ref = (
             phi_ref_star -
             (CON_RD * tav.sel({LEV_ERA:hl_ref_star-1})) * 
+            #(CON_RD * tav.sel({LEV_ERA:hl_ref_star-1},method='nearest')) * 
             (np.log(p_ref) - np.log(p_ref_star))
     )
 
@@ -706,13 +711,16 @@ def harmonic_ac_analysis(ts):
     Is incomplete since it is only for use in surrogate smoothing 
     --> only the part of the formulas that is needed there
 
-    Arguments:
-        ts: a 1-d numpy array of a timeseries
+    Parameters
+    ----------
+    ts :  1D numpy array
+        Passes a time series
 
-    Returns:
-        hcts: a reconstructed smoothed timeseries 
+    Returns
+    -------
+        hcts : a reconstructed smoothed timeseries 
                 (the more modes are summed the less smoothing)
-        mean: the mean of the timeseries (needed for reconstruction)
+        mean : the mean of the timeseries (needed for reconstruction)
     """
 
     if np.any(np.isnan(ts) == True): #if there are nans, return nans
@@ -771,7 +779,23 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
     Method to do lat/lon bilinear interpolation for periodic or non-periodic
     grid either with xesmf (i_use_xesmf), or with an xarray-only 
     implementation if the xesmf package is not installed.
+    
+    Parameters
+    ----------
+    
+    ds_gcm: xr.array
+        Passes the original grid and data from the gcm
+    ds_era5 : xr.array
+        Passes the target grid data to interpolate to
+    var_name : string
+        Passes the name of the variable to interpolate
+    
+    Returns
+    -------
+    ds_regridded : np.ndarray
+        ds_gcm interpolated to the ds_era5 grid
     """
+
     if method != 'bilinear':
         NotImplementedError()
 
@@ -898,3 +922,238 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
     #    raise ValueError('NaN in GCM dataset after interpolation.')
 
     return(ds_gcm)
+
+def nan_ignoring_interp(da_era5_land_fr, da_delta, radius):
+    """Point cloud based NaN-ignoring interpolation from unstructured to regular lon/lat grid
+
+    This function takes an xarray 2D array with individual lon/lat coordinates and 
+    uses pyvista.interpolate() to interpolate that grid to a regular lon/lat grid. This function
+    will ignore all NaN values present in the unstructured grid.
+
+    Parameters
+    ----------
+
+    da_era5_land_fr : xr.array
+        Passes the ERA5 land fraction and grid data
+    da_delta : xr.array
+        Passes the unstructured array from which to interpolate
+    radius : scaler
+        Passes a maximal distance for interpolation 
+    
+    Returns
+    -------
+    new_era5_grid : np.ndarray
+        da_delta interpolated to the ERA5 grid
+    """
+
+    #-------------------
+    #PREPROCESSING GCM DATA
+    #-------------------
+
+    #Construct lon and lat arrays for point cloud by flattening them into an array
+    gcm_lat_raw = da_delta.coords[LAT_GCM_OCEAN].values.reshape(-1)
+    gcm_lon_raw = da_delta.coords[LON_GCM_OCEAN].values.reshape(-1)
+    gcm_val_raw = da_delta.values.reshape(-1)
+
+    # Change to -180,180 range. This simplifies the wrap-around from 0-360
+    for i in range(len(gcm_lon_raw)):
+        if gcm_lon_raw[i] > 180:
+            gcm_lon_raw[i] -= 360
+
+    #Remove NaN values and save NaN mask
+    nan_mask_curv = ~np.isnan(gcm_val_raw)
+    gcm_val = gcm_val_raw[nan_mask_curv]
+    gcm_lon = gcm_lon_raw[nan_mask_curv]
+    gcm_lat = gcm_lat_raw[nan_mask_curv]
+
+
+    # Convert lon/lat degrees to lon/lat kilometers
+
+    #First save the sign of the lon and lat array
+    sign_map_lat = np.sign(gcm_lat)
+    sign_map_lon = np.sign(gcm_lon)
+    #Specify which Earth model to use
+    geod = Geod(ellps="WGS84")
+    #Convert to km based scale. First two return arguments can be ignored as they are not relevant for this task
+    #and this function is still faster then alternatives due to numpy vectorizing
+    del1, del2, gcm_lat_meter = geod.inv(gcm_lon, np.zeros(len(gcm_lat)), gcm_lon, gcm_lat)
+    del1, del2, gcm_lon_meter = geod.inv(np.zeros(len(gcm_lat)), gcm_lat, gcm_lon, gcm_lat)
+    del1, del2, lon_offset    = geod.inv(np.zeros(len(gcm_lat)), gcm_lat, np.ones(len(gcm_lat))*180, gcm_lat)
+    
+    #Add the signs back to the distances, so that we can have minus coords
+    gcm_lat_meter = np.multiply(gcm_lat_meter, sign_map_lat)
+    gcm_lon_meter = np.multiply(gcm_lon_meter, sign_map_lon)
+    
+    #Implement Boundary points
+    gcm_val_bd = np.empty(len(gcm_val)*3)
+    gcm_lon_bd = np.empty(len(gcm_lon_meter)*3)
+    gcm_lat_bd = np.empty(len(gcm_lat_meter)*3)
+    
+    gcm_val_bd[:] = np.tile(gcm_val, 3)
+    gcm_lat_bd[:] = np.tile(gcm_lat_meter, 3)
+    gcm_lon_bd[:] = np.tile(gcm_lon_meter, 3)
+
+    gcm_lon_bd[:len(gcm_lon_meter)] -= lon_offset * 2
+    gcm_lon_bd[2*len(gcm_lon_meter):] += lon_offset * 2
+
+
+    #Create grid matrix for further use in the interpolation scheme
+    #3rd dim is needed for the interpolation library but can be ignored
+    curv_points = np.zeros((gcm_lat_bd.shape[0], 3))
+    curv_points[:,0] = gcm_lat_bd
+    curv_points[:,1] = gcm_lon_bd
+
+    #-------------------
+    #PREPROCESSING ERA5 DATA
+    #-------------------
+
+    #Extract Era5 values from xarray
+    era5_val_raw = da_era5_land_fr.values.reshape(-1)
+    era5_lat_raw = da_era5_land_fr.coords[LAT_ERA].values
+    era5_lon_raw = da_era5_land_fr.coords[LON_ERA].values
+
+    # Change to -180,180 range if needed
+    for i in range(len(era5_lon_raw)):
+        if era5_lon_raw[i] > 180:
+            era5_lon_raw[i] -= 360
+
+    #Create flatten lon and lat arrays
+    era5_lat_flatten = np.repeat(era5_lat_raw, len(era5_lon_raw))
+    era5_lon_flatten = np.tile(era5_lon_raw, len(era5_lat_raw))
+
+    #Repeat the conversion to km
+    sign_map_lat = np.sign(era5_lat_flatten)
+    sign_map_lon = np.sign(era5_lon_flatten)
+    del1, del2, era5_lat_meter = geod.inv(era5_lon_flatten, np.zeros(len(era5_lat_flatten)), 
+            era5_lon_flatten, era5_lat_flatten)
+    del1, del2, era5_lon_meter = geod.inv(np.zeros(len(era5_lon_flatten)), 
+            era5_lat_flatten, era5_lon_flatten, era5_lat_flatten) 
+    era5_lat_meter = np.multiply(era5_lat_meter,sign_map_lat)
+    era5_lon_meter = np.multiply(era5_lon_meter,sign_map_lon)
+
+    #Create grid matrix for further use in the interpolation scheme
+    #3rd dim is needed for the interpolation library but can be ignored
+    era5_points = np.zeros((era5_lat_meter.shape[0], 3))
+    era5_points[:,0] = era5_lat_meter
+    era5_points[:,1] = era5_lon_meter
+
+    # Create masks pure_ocean and frac_ocean for use of the mixed scheme
+    land_map = np.where(era5_val_raw > 0.7)[0]
+
+    #-------------------
+    #Computing the interpolation
+    #-------------------
+    #Set up pyvista unstructured grids for both gcm and era5 data
+    grid = PolyData(era5_points)
+    points = PolyData(curv_points)
+    #Fill gcm sst into the grid
+    points['values'] = gcm_val_bd
+    #Core interpolation: mask land values with empty and only consider points in a certain radius
+    grid = grid.interpolate(points, null_value=np.nan,radius=radius)
+    #-------------------
+    #POSTPROCESSING ERA5 DATA
+    #-------------------
+    
+    #Save result
+    result = grid['values']
+    #Overlay land mask to negate sst propagation onto land
+    result[land_map] = np.nan
+    
+    # Reshape back to matrix
+    return result.reshape((len(era5_lat_raw),len(era5_lon_raw)))
+
+def interp_wrapper(origin_grid, target_grid, var_name, i_use_xesmf=0, radius=300000):
+    """Interpolation wrapper that allows for each variable to be assigned a custom scheme
+
+    This function implements for different variables different kinds of interpoaltion. Default is bi-linear
+    interpolation from regular grid to regular grid.
+
+    Parameters
+    ----------
+
+    origin_grid : xr.array
+        Passes the GCM original grid structure and values
+    target_grid : xr.array
+        Passes target grid structure to interpolate
+    i_use_xesmf = boolean
+        Passes booloean to adjust which bi-linear scheme is used, only applicable for athmospheric variables
+    radius : scaler
+        Passes a maximal distance for interpolation, only applicable for ocean variables 
+    
+    Returns
+    -------
+    new_era5_grid : xr.DataSet
+        da_delta interpolated to the ERA5 grid
+    """
+    #Custom interpolation for TOS
+    if var_name == 'tos':
+        land_fraction = target_grid["FR_LAND"][0,:,:]
+        tos_values = origin_grid['tos']
+        
+        #Interpolate all 12 months indivdually
+        result = np.empty((12,len(target_grid[LAT_ERA]), len(target_grid[LON_ERA])))
+        for i in range(12):
+            result[i,:,:] = nan_ignoring_interp(land_fraction, tos_values[i,:,:], radius=radius)
+        
+        #Save into xr.Dataset
+        ds = xr.Dataset(
+            data_vars=dict(
+                tos=(["time","lat", "lon"], result),
+            ),
+            coords=dict(
+                lat=(["lat"], target_grid[LAT_ERA]),
+                lon=(["lon"], target_grid[LON_ERA]),
+                time=origin_grid[TIME_GCM]
+            ),
+            attrs=dict(description="SST on ERA5 grid", units="K", long_name="Sea Surface Temperature"),
+        )
+    #Default interpolation
+    else:
+        ds = regrid_lat_lon(origin_grid, target_grid, var_name,
+                        method='bilinear',
+                        i_use_xesmf=i_use_xesmf)
+    return ds
+
+def integrate_tos(tos_field, tas_field, land_frac, ice_frac):
+    """Combines TOS and TAS temperature as a weighted according to land and ocean contribution
+    
+    This functions assumes that all fields are on the same grid!
+
+    Parameters
+    ----------
+    tos_field : 2d.nparray
+        Passes TOS field on ERA5 grid
+    tas_field : 2d.nparray
+        Passes TAS field on ERA5 grid
+    land_frac : 2d.nparray
+        Passes land fraction on ERA5 grid
+    ice_field : 2d.nparray
+        Passes sea ice fraction on ERA5 grid
+
+    
+    Returns
+    -------
+    combined_tas : 2d.nparray
+        Returns combined temperature fields
+    """
+    #Save dims to reshape the original grid
+    dims = tos_field.shape
+    #Ocean mask
+    ice_frac = ice_frac.reshape(-1)
+    tos_field = tos_field.reshape(-1)
+    #TODO add cases for true mask
+
+    mask = ~np.isnan(ice_frac) & ~np.isnan(tos_field)
+    #Turn all fields into arrays for easier accessing
+    ice_frac_masked  = ice_frac[mask]
+    land_frac_masked = land_frac.reshape(-1)[mask]
+    tos_field_masked = tos_field.reshape(-1)[mask]
+    tas_field_masked = tas_field.reshape(-1)[mask]
+    #Arrays to save output in
+    output = np.ones(len(tos_field.reshape(-1)))
+    output[:] = tas_field.reshape(-1)
+    
+    tas_frac = np.clip(ice_frac_masked + land_frac_masked, 0, 1)
+    output[mask] = np.add(np.multiply(tas_frac, tas_field_masked), np.multiply(1-tas_frac, tos_field_masked))
+    
+    return output.reshape(dims)

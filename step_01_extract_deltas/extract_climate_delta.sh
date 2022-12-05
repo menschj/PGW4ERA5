@@ -33,13 +33,33 @@
 ## These Emon fixes are still a bit experimental and not very user-friendly.
 ## Sorry for that!
 ##############################################################################
+Usage="
+##############################################################################
+## Template script to extract climate deltas from CMIP GCMs.
+## Computes climatologies and the climate deltas for specific CMIP 
+## experiments and members.
+## The script only serves as inspiration for the extraction of the climate
+## deltas and it is not generally valid and has to be adjusted 
+## for specific use case.
+
+-h to see this message
+-s <dataset_name> to get info on a specific data set (TODO)
+<> to get deltas for Amon dataset (should be removed later on)
+<dataset_name> to get the desired delta from this dataset
+    Curently supported are: Amon and Omon"
+
+while getopts 'h' flag; do
+  case "${flag}" in
+    h) echo "$Usage" ; exit 0;
+  esac
+done
 
 # USER SETTINGS
 ##############################################################################
 # base directory where cmip6 data is stored
 cmip_data_dir=/net/atmos/data/cmip6
 # base directory where output should be stored
-out_base_dir=/net/o3/hymet_nobackup/heimc/data/pgw/deltas/native
+out_base_dir=/net/argon/hymet_nobackup/menschj/data/pgw/deltas/native
 
 # name of the GCM to extract data for
 gcm_name=MPI-ESM1-2-HR
@@ -55,7 +75,7 @@ future_climate_experiment=ssp585
 ## type of CMIP6 model output (e.g. monthly or daily, etc.)
 ## to use
 # standard monthly output
-table_ID=Amon
+#table_ID=Amon
 ## high-resolution monthly data for only very few GCMs
 #table_ID=Emon
 ## standard daily output
@@ -65,6 +85,21 @@ table_ID=Amon
 ## ocean monthly output
 #table_ID=Omon
 
+##Experimental addition to use command-line args to select type
+##Can (should) be done in a foor loop so that it runs for multiple data sets at the same time
+if [[ "$1" == "Amon" ]]; then
+    table_ID=$1
+elif [[ "$1" == "Omon" ]]; then
+    table_ID=$1
+elif [ $# -eq 0 ]; then
+    echo "Please specify which dataset the deltas should be extracted from. See -h for more info"
+    exit 0
+else
+    txt="This dataset is currently not supported
+Check -h for all supported datasets"
+    echo "$txt"
+    exit 0
+fi
 
 ## select variables to extract
 if [[ "$table_ID" == "Amon" ]]; then
@@ -120,6 +155,7 @@ experiments=($era_climate_experiment $future_climate_experiment)
 ##############################################################################
 
 out_dir=$out_base_dir/$table_ID/$gcm_name
+echo $out_dir
 mkdir -p $out_dir
 
 for var_name in ${var_names[@]}; do
@@ -204,7 +240,6 @@ for var_name in ${var_names[@]}; do
     fi
 
 done
-
 
 # link surface fields from Amon because they are not available
 # in Emon
