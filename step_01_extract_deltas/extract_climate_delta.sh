@@ -46,7 +46,7 @@ Usage="
 -s <dataset_name> to get info on a specific data set (TODO)
 <> to get deltas for Amon dataset (should be removed later on)
 <dataset_name> to get the desired delta from this dataset
-    Curently supported are: Amon and Omon"
+    Curently supported are: Amon, Omon, Emon, day, CFday"
 
 while getopts 'h' flag; do
   case "${flag}" in
@@ -59,7 +59,7 @@ done
 # base directory where cmip6 data is stored
 cmip_data_dir=/net/atmos/data/cmip6
 # base directory where output should be stored
-out_base_dir=/net/argon/hymet_nobackup/menschj/data/pgw/deltas/native
+out_base_dir=/net/argon/hymet_nobackup/heimc/data/pgw/deltas/native
 
 # name of the GCM to extract data for
 gcm_name=MPI-ESM1-2-HR
@@ -90,6 +90,12 @@ future_climate_experiment=ssp585
 if [[ "$1" == "Amon" ]]; then
     table_ID=$1
 elif [[ "$1" == "Omon" ]]; then
+    table_ID=$1
+elif [[ "$1" == "Emon" ]]; then
+    table_ID=$1
+elif [[ "$1" == "day" ]]; then
+    table_ID=$1
+elif [[ "$1" == "CFday" ]]; then
     table_ID=$1
 elif [ $# -eq 0 ]; then
     echo "Please specify which dataset the deltas should be extracted from. See -h for more info"
