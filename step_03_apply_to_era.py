@@ -103,9 +103,8 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                            era_file[TIME_ERA], era_step_dt)
     delta_tos = load_delta(delta_input_dir, 'tos',
                            era_file[TIME_ERA], era_step_dt)
-    month_idx = int(era_step_dt.strftime("%m")) - 1
     delta_combined = integrate_tos(delta_tos.values,delta_tas.values, 
-                  era_file['FR_LAND'][0,:,:].values, era_file['FR_SEA_ICE'][month_idx,:,:].values)
+                  era_file['FR_LAND'][0,:,:].values, era_file['FR_SEA_ICE'][0,:,:].values)
     era_file[var_name_map[var_name]].values += delta_combined
     delta_tas.values = delta_combined
     # store delta for output in case of --debug_mode = interpolate_full
