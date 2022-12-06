@@ -3,8 +3,9 @@
 """
 description     PGW for ERA5 main routine to update ERA5 files with climate
                 deltas to transition from ERA climate to PGW climate.
-authors		Before 2022: original developments by Roman Brogli
-                Since 2022:  upgrade to PGW for ERA5 by Christoph Heim 
+authors		Before 2022:    original developments by Roman Brogli
+                Since 2022:     upgrade to PGW for ERA5 by Christoph Heim 
+                2022:           udpates by Jonas Mensch
 """
 ##############################################################################
 import argparse, os
@@ -95,38 +96,47 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     #########################################################################
     ### UPDATE SURFACE AND SOIL TEMPERATURE
     #########################################################################
-    # update surface temperature using near-surface temperature delta
-    var_name = 'tas'
+    # update surface skin temperature using SST delta over sea and and 
+    # near-surface temperature delta over land and over sea ice
     if i_debug >= 2:
-        print('update {}'.format(var_name))
-    delta_tas = load_delta(delta_input_dir, var_name,
+        print('update surface skin temperature (ts)')
+    # load near surface temperature climate delta
+    #(for grid points over land and sea ice)
+    delta_tas = load_delta(delta_input_dir, 'tas',
                            era_file[TIME_ERA], era_step_dt)
+    # load SST climate delta (for grid points over open water)
     delta_tos = load_delta(delta_input_dir, 'tos',
                            era_file[TIME_ERA], era_step_dt)
-    delta_combined = integrate_tos(delta_tos.values,delta_tas.values, 
-                  era_file['FR_LAND'][0,:,:].values, era_file['FR_SEA_ICE'][0,:,:].values)
-    era_file[var_name_map[var_name]].values += delta_combined
+    # combine using land and sea-ice mask in ERA5
+    delta_combined = integrate_tos(
+        delta_tos.values,
+        delta_tas.values, 
+        era_file[var_name_map['sftlf']].isel({TIME_ERA:0}).values, 
+        era_file[var_name_map['sic']].isel({TIME_ERA:0}).values
+    )
+    era_file[var_name_map['ts']].values += delta_combined
     delta_tas.values = delta_combined
     # store delta for output in case of --debug_mode = interpolate_full
-    deltas[var_name] = delta_tas
+    deltas['ts'] = delta_tas
 
     # update temperature of soil layers
-    var_name = 'st'
     if i_debug >= 2:
-        print('update {}'.format(var_name))
+        print('update soil layer temperature (st)')
     # set climatological lower soil temperature delta to annual mean
     # climate delta of near-surface temperature.
     delta_st_clim = load_delta(delta_input_dir, 'tas',
                             era_file[TIME_ERA], 
                             target_date_time=None).mean(dim=[TIME_GCM])
+    # interpolate between surface temperature and deep soil temperature
+    # using exponential decay of annual cycle signal
     delta_st = (
             delta_st_clim + np.exp(-era_file.soil1/2.8) * 
                     (delta_tas - delta_st_clim)
     )
     delta_st = delta_st.transpose(TIME_ERA, SOIL_HLEV_ERA, LAT_ERA, LON_ERA)
-    era_file[var_name_map[var_name]].values += delta_st
+    era_file[var_name_map['st']].values += delta_st
     # store delta for output in case of --debug_mode = interpolate_full
-    deltas[var_name] = delta_st
+    deltas['st'] = delta_st
 
     #########################################################################
     ### START UPDATING 3D FIELDS
@@ -154,13 +164,6 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
                     era_file[var_name_map[var_name]] + 
                     deltas[var_name]
             )
-
-            # convert relative humidity to specific humidity
-            # take PGW climate state temperature and relative humidity
-            # but assume ERA climate state pressure
-            if var_name == 'hur':
-                vars_pgw['hus'] = relative_to_specific_humidity(
-                                vars_pgw['hur'], pa_era, vars_pgw['ta'])
 
 
     #########################################################################
@@ -193,6 +196,8 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
             # interpolate ERA climate state variables as well as
             # climate deltas onto updated model levels, and
             # compute PGW climate state variables
+            if i_debug >= 2:
+                print('reinterpolate ta and hur')
             for var_name in ['ta', 'hur']:
                 vars_era[var_name] = interp_logp_4d(
                                 era_file[var_name_map[var_name]], 
@@ -209,7 +214,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
             p_ref_opts = load_delta(delta_input_dir, 'zg',
                                 era_file[TIME_ERA], era_step_dt)[PLEV_GCM]
             # maximum reference pressure in ERA and PGW climate states
-            # (take 90% of surface pressure to ensure that a few model
+            # (take 95% of surface pressure to ensure that a few model
             # levels are located in between which makes the solution
             # smoother).
             p_min_era = pa_hl_era.isel(
@@ -245,19 +250,34 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         #quit()
 
         # convert relative humidity to speicifc humidity in pgw
+        # take PGW climate state temperature and relative humidity
+        # and pressure of current iteration
         vars_pgw['hus'] = relative_to_specific_humidity(
-                        vars_pgw['hur'], pa_pgw, vars_pgw['ta'])
+            vars_pgw['hur'], 
+            pa_pgw, 
+            vars_pgw['ta']
+        )
 
         # compute updated geopotential at reference pressure
-        phi_ref_pgw = integ_geopot(pa_hl_pgw, era_file.FIS, vars_pgw['ta'], 
-                                    vars_pgw['hus'], era_file[HLEV_ERA], p_ref)
+        phi_ref_pgw = integ_geopot(
+            pa_hl_pgw, 
+            era_file[var_name_map['zgs']], 
+            vars_pgw['ta'], 
+            vars_pgw['hus'], 
+            era_file[HLEV_ERA], 
+            p_ref
+        )
 
         # recompute original geopotential at currently used 
         # reference pressure level
-        phi_ref_era = integ_geopot(pa_hl_era, era_file.FIS,
-                                    era_file[var_name_map['ta']], 
-                                    era_file[var_name_map['hus']], 
-                                    era_file[HLEV_ERA], p_ref)
+        phi_ref_era = integ_geopot(
+            pa_hl_era, 
+            era_file[var_name_map['zgs']],
+            era_file[var_name_map['ta']], 
+            era_file[var_name_map['hus']], 
+            era_file[HLEV_ERA],
+            p_ref
+        )
 
         delta_phi_ref = phi_ref_pgw - phi_ref_era
 
@@ -321,7 +341,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     ## for debug_mode == interpolate_full, write final climate deltas
     ## to output directory
     if debug_mode == 'interpolate_full':
-        var_names = ['tas','ps','ta','hur','ua','va','st']
+        var_names = ['ps','ta','hur','ua','va','st','ts']
         for var_name in var_names:
             print(var_name)
             # creat output file name
@@ -338,10 +358,11 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     #########################################################################
     ## for production mode, modify ERA5 file and save
     else:
-        ## update fields in ERA file
+        ## update 3D fields in ERA file
         era_file[var_name_map['ps']] = ps_pgw
-        for var_name in ['ta', 'hus', 'ua', 'va']:
+        for var_name in ['ta','hus','ua','va']:
             era_file[var_name_map[var_name]] = vars_pgw[var_name]
+        ## remove manually computed RH field in ERA5 file
         del era_file[var_name_map['hur']]
 
 
@@ -369,7 +390,7 @@ def debug_interpolate_time(
     # the time format of the ERA5 file
     era_file = xr.open_dataset(inp_era_file_path, decode_cf=False)
 
-    var_names = ['tas','hurs','ps','ta','hur','ua','va','zg']
+    var_names = ['tos','tas','hurs','ps','ta','hur','ua','va','zg']
     for var_name in var_names:
         print(var_name)
         #name_base = climate_delta_file_name_base
@@ -440,6 +461,12 @@ if __name__ == "__main__":
 
     ##########################################################################
 
+    Note that epxloring the option --debug_mode (-D) can provide a lot of
+    insight into what the code does and can help gain confidence using the
+    code (see argument documentation below for more information).
+
+    ##########################################################################
+
     Some more information about the iterative surface pressure
     adjustment:
 
@@ -453,25 +480,20 @@ if __name__ == "__main__":
     pressure adjustment used here. See publication for more details.
     The higher (in terms of altitdue) the reference pressure is chosen, 
     the larger this error may get. 
-    To alleviate this problem, the default option is that the reference
-    pressure is determined locally as the lowest possible pressure above
-    the surface for which a climate delta for the geopotential is available.
-    In general -- even more so if climate deltas have coarse vertical 
-    resolution -- it seems to be a good choice to use this default.
+    Alternatively, the reference pressure can be determined locally 
+    as the lowest possible pressure above the surface for which a climate 
+    delta for the geopotential is available (see settings.py).
 
     - If the iteration does not converge, 'thresh_phi_ref_max_error' in
     the file settings.py may have to be raised a little bit. Setting
     i_debug = 2 may help to diagnose if this helps.
-
 
     - As a default option, the climate deltas are interpolated to
     the ERA5 model levels of the ERA climate state before the surface
     pressure is adjusted (i_reinterp = 0).
     There is an option implemented (i_reinterp = 1) in which the
     deltas are re-interpolated on the updated ERA5 model levels
-    with each iteration of surface pressure adjustment. This was
-    found to lead more balanced PGW climate states if the climate
-    deltas have coarse vertical resolution. However, it also
+    with each iteration of surface pressure adjustment. However, this
     implies that the ERA5 fields are extrapolated at the surface
     (if the surface pressure increases) the effect of which was not
     tested in detail. The extrapolation is done assuming that the

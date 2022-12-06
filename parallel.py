@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
-description     Helper class for parallel computing.
+description         Helper class for parallel computing.
 author		    Christoph Heim
 usage		    use in another script
 """

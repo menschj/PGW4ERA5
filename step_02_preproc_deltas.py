@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 description     PGW for ERA5 preprocessing of climate deltas
-authors		    Before 2022: original developments by Roman Brogli
-                Since 2022:  upgrade to PGW for ERA5 by Christoph Heim 
+authors		Before 2022:    original developments by Roman Brogli
+                Since 2022:     upgrade to PGW for ERA5 by Christoph Heim 
+                2022:           udpates by Jonas Mensch
 """
 ##############################################################################
 import os, argparse
@@ -27,7 +28,7 @@ parser = argparse.ArgumentParser(description =
             'PGW for ERA5: Preprocess GCM data before modifying ' +
             'the ERA5 files. The main PGW routine (step_03_apply_to_era.py) ' +
             'requires GCM climate delta files (SCEN-HIST) for ' +
-            'ta,hur,ua,va,zg,hurs,tas as well ' +
+            'ta,hur,ua,va,zg,hurs,tas,tos as well ' +
             'as the GCM HIST climatology file for ps. This script here by ' +
             'default preprocesses both the SCEN-HIST and HIST files ' +
             'for the variables it is run for. Both are thus required for ' +
@@ -35,7 +36,7 @@ parser = argparse.ArgumentParser(description =
             'looks for the inputs files using the naming convention ' +
             '${var_name}_${file_name_base}.nc, where the ${file_name_base} ' +
             'for the SCEN-HIST and the HIST files ' +
-            'can be set in settings.py, among other things. If this script ' +
+            'can be set in settings.py. If this script ' +
             'is used to preprocess daily GCM data, one can run it twice and '+
             'store the intermediate results: once '+
             'for processing_step "smoothing" and once for "regridding". ' +
@@ -108,10 +109,11 @@ print('Run {} for variable names {}.'.format(
 # iterate over all variables to preprocess
 for var_name in var_names:
     print(var_name)
-    if var_name == 'ps':
-        clim_periods = ['HIST','SCEN-HIST']
-    else:
-        clim_periods = ['SCEN-HIST']
+    #if var_name == 'ps':
+    #    clim_periods = ['HIST','SCEN-HIST']
+    #else:
+    #    clim_periods = ['SCEN-HIST']
+    clim_periods = ['HIST','SCEN-HIST']
     # iterate over the two types of GCM data files
     # (HIST and SCEN-HIST)
     for clim_period in clim_periods:

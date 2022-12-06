@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 description     Auxiliary functions for PGW for ERA5
-authors		    Before 2022: original developments by Roman Brogli
-                Since 2022:  upgrade to PGW for ERA5 by Christoph Heim 
+authors		Before 2022:    original developments by Roman Brogli
+                Since 2022:     upgrade to PGW for ERA5 by Christoph Heim 
+                2022:           udpates by Jonas Mensch
 """
 ##############################################################################
 import os, math
