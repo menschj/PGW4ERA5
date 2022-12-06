@@ -432,19 +432,19 @@ if __name__ == "__main__":
     ##########################################################################
 
     Main function to update ERA5 files with the PGW signal.
-    The terminology used is CTRL referring to the historical (or reference)
+    The terminology used is HIST referring to the historical (or reference)
     climatology, SCEN referring to the future (climate change scenario)
-    climatology, and SCEN-CTRL (a.k.a. climate delta) referring to the
+    climatology, and SCEN-HIST (a.k.a. climate delta) referring to the
     PGW signal which should be applied to the ERA5 files.
-    The script adds (and requires) SCEN-CTRL for:
+    The script computes and adds a climate change signal for:
         - ua
         - va
-        - ta (using tas)
+        - ta (including tas for interpolation near the surface)
         - hus (computed using a hur and hurs climate delta)
-        - surface and soil temperature
+        - surface skin temperature (including SST) and soil temperature
     and consequently iteratively updates ps to maintain hydrostatic
     balance. During this, the climate delta for zg is additionally required.
-    Finally, the CTRL ps is also needed.
+    A list of all climate deltas required is shown in settings.py.
 
     ##########################################################################
 
@@ -535,10 +535,10 @@ if __name__ == "__main__":
 
     # climate delta directory (already remapped to ERA5 grid)
     parser.add_argument('-d', '--delta_input_dir', type=str, default=None,
-            help='Directory with GCM climate deltas (SCEN-CTRL) to be used. ' +
+            help='Directory with GCM climate deltas (SCEN-HIST) to be used. ' +
             'This directory should have a climate delta for ta,hur,' +
             'ua,va,zg,tas,hurs (e.g. ta_delta.nc), as well as the ' +
-            'CTRL climatology value for ps (e.g. ps_historical.nc). ' +
+            'HIST climatology value for ps (e.g. ps_historical.nc). ' +
             'All files have to be horizontally remapped to the grid of ' +
             'the ERA5 files used (see step_02_preproc_deltas.py).')
 
