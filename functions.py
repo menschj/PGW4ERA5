@@ -2,22 +2,28 @@
 # -*- coding: utf-8 -*-
 """
 description     Auxiliary functions for PGW for ERA5
-authors		    Before 2022: original developments by Roman Brogli
-                Since 2022:  upgrade to PGW for ERA5 by Christoph Heim 
+authors		Before 2022:    original developments by Roman Brogli
+                Since 2022:     upgrade to PGW for ERA5 by Christoph Heim 
+                2022:           udpates by Jonas Mensch
 """
 ##############################################################################
 import os, math
+import pandas as pd
 import xarray as xr
 import numpy as np
+from pyvista import PolyData
+from pyproj import Geod
+
 from numba import njit
 from datetime import datetime,timedelta
-from constants import CON_RD, CON_G
+from constants import CON_RD,CON_G,CON_MW_MD
 from settings import (
     i_debug,
     i_use_xesmf_regridding,
     file_name_bases,
     TIME_ERA, LEV_ERA, HLEV_ERA, LON_ERA, LAT_ERA,
     TIME_GCM, PLEV_GCM, LON_GCM, LAT_GCM,
+    LAT_GCM_OCEAN, LON_GCM_OCEAN, TIME_GCM_OCEAN,
 )
 if i_use_xesmf_regridding:
     import xesmf as xe
@@ -30,7 +36,7 @@ if i_use_xesmf_regridding:
 ##############################################################################
 ##### ARBITRARY FUNCTIONS
 ##############################################################################
-def dt64_to_dt(date):
+def dt64_to_dt(dt64):
     """
     Converts a numpy datetime64 object to a python datetime object 
     Input:
@@ -40,28 +46,99 @@ def dt64_to_dt(date):
     source: 
       https://gist.github.com/blaylockbk/1677b446bc741ee2db3e943ab7e4cabd
     """
-    timestamp = ((date - np.datetime64('1970-01-01T00:00:00'))
+    timestamp = ((dt64 - np.datetime64('1970-01-01T00:00:00Z'))
                  / np.timedelta64(1, 's'))
-    return datetime.utcfromtimestamp(timestamp)
+    return(datetime.utcfromtimestamp(timestamp))
 
 
 ##############################################################################
 ##### PHYSICAL COMPUTATIONS
 ##############################################################################
+
+def specific_humidity_to_vapor_pressure(hus, pa):
+    """
+    Compute vapor pressure
+    https://cran.r-project.org/web/packages/humidity/vignettes/humidity-measures.html
+    """
+    vapp = hus * pa / (CON_MW_MD + 0.378 * hus)
+    return(vapp)
+
+def vapor_pressure_to_specific_humidity(vapp, pa):
+    """
+    Compute vapor pressure
+    https://cran.r-project.org/web/packages/humidity/vignettes/humidity-measures.html
+    """
+    hus = CON_MW_MD * vapp / (pa - (1 - CON_MW_MD) * vapp)
+    return(hus)
+
+def saturation_vapor_pressure_water_or_ice(pa, ta, water=True):
+    """
+    Compute saturation vapor pressure over water or ice 
+    according to ECMWF IFS documentation (7.93).
+    """
+    T0 = 273.16     # K
+    if water:
+        a1 = 611.21 # Pa
+        a3 = 17.502 # 1
+        a4 = 32.19  # K
+    else: # over ice
+        a1 = 611.21 # Pa
+        a3 = 22.587 # 1
+        a4 = -0.7   # K
+    vapp_sat_x = a1 * np.exp(a3 * (ta - T0) / (ta - a4))
+    return(vapp_sat_x)
+
+def saturation_vapor_pressure_water_and_ice(pa, ta):
+    """
+    Compute saturation vapor pressure according to ECMWF IFS documentation (7.92).
+    """
+    T0 = 273.16     # K
+    Ti = 250.16     # K
+    alpha = xr.full_like(ta, np.nan)
+    alpha = xr.where(ta >= T0, 1, alpha)
+    alpha = xr.where(ta <= Ti, 0, alpha)
+    alpha = xr.where((ta < T0) & (ta > Ti), np.power((ta - Ti)/(T0 - Ti), 2.), alpha)
+    vapp_sat = (
+        alpha * saturation_vapor_pressure_water_or_ice(pa, ta, water=True) +
+        (1 - alpha) * saturation_vapor_pressure_water_or_ice(pa, ta, water=False)
+    )
+    return(vapp_sat)
+
 def specific_to_relative_humidity(hus, pa, ta):
     """
-    Compute relative humidity from specific humidity.
+    Compute relative humidity from specific humidity
+    following the implementation in the IFS model.
     """
-    hur = 0.263 * pa * hus *(np.exp(17.67*(ta - 273.15)/(ta-29.65)))**(-1)
+    hur = (
+        specific_humidity_to_vapor_pressure(hus, pa) / 
+        saturation_vapor_pressure_water_and_ice(pa, ta)
+    ) * 100
     return(hur)
-
 
 def relative_to_specific_humidity(hur, pa, ta):
     """
-    Compute specific humidity from relative humidity.
+    Compute relative humidity from specific humidity
+    following the implementation in the IFS model.
     """
-    hus = (hur  * np.exp(17.67 * (ta - 273.15)/(ta - 29.65))) / (0.263 * pa)
+    vapp = hur / 100 * saturation_vapor_pressure_water_and_ice(pa, ta)
+    hus = vapor_pressure_to_specific_humidity(vapp, pa)
     return(hus)
+
+
+#def specific_to_relative_humidity(hus, pa, ta):
+#    """
+#    Compute relative humidity from specific humidity.
+#    """
+#    hur = 0.263 * pa * hus *(np.exp(17.67*(ta - 273.15)/(ta-29.65)))**(-1)
+#    return(hur)
+#
+#
+#def relative_to_specific_humidity(hur, pa, ta):
+#    """
+#    Compute specific humidity from relative humidity.
+#    """
+#    hus = (hur  * np.exp(17.67 * (ta - 273.15)/(ta - 29.65))) / (0.263 * pa)
+#    return(hus)
 
 
 def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
@@ -98,7 +175,11 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
     # determine level below reference pressure
     p_diff = pa_hl - p_ref
     p_diff = p_diff.where(p_diff >= 0, np.nan)
-    ind_ref_star = p_diff.argmin(dim=HLEV_ERA)
+    try:
+        ind_ref_star = p_diff.argmin(dim=HLEV_ERA)
+    except ValueError :
+        raise ValueError("p_ref locally lies below the surface. Please set a lower reference pressue (p_ref_inp) in settings.py")
+    
     hl_ref_star = p_diff[HLEV_ERA].isel({HLEV_ERA:ind_ref_star})
     # get pressure and geopotential of that level
     p_ref_star = pa_hl.sel({HLEV_ERA:hl_ref_star})
@@ -109,6 +190,7 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
     phi_ref = (
             phi_ref_star -
             (CON_RD * tav.sel({LEV_ERA:hl_ref_star-1})) * 
+            #(CON_RD * tav.sel({LEV_ERA:hl_ref_star-1},method='nearest')) * 
             (np.log(p_ref) - np.log(p_ref_star))
     )
 
@@ -128,7 +210,7 @@ def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
 ##############################################################################
 def load_delta(delta_input_dir, var_name, era5_date_time, 
                target_date_time=None,
-               name_base=file_name_bases['SCEN-CTRL']):
+               name_base=file_name_bases['SCEN-HIST']):
     """
     Load a climate delta and if target_date_time is given,
     interpolate it to that date and time of the year.
@@ -136,6 +218,16 @@ def load_delta(delta_input_dir, var_name, era5_date_time,
     ## full climate delta (either daily or monthly)
     full_delta = xr.open_dataset(os.path.join(delta_input_dir,
                             name_base.format(var_name)))
+    ## convert time values to standard Pandas Datetimes
+    ## this is to catch error arising from cftime.DatetimeNoLeap time format
+    ## (https://stackoverflow.com/questions/54462798/cftime-datetimenoleap-object-fails-to-convert-with-pandas-to-datetime)
+    full_delta = full_delta.assign_coords(
+        time=full_delta.indexes['time']    #? FIX (removed .to_timedateindex())
+    )
+    #if not isinstance(full_delta.indexes['time'], pd.core.indexes.datetimes.DatetimeIndex):
+    #    full_delta = full_delta.assign_coords(
+    #        time=full_delta.indexes['time'].to_datetimeindex()
+    #    )
 
     ## remove leap year february 29th if in delta
     leap_day = None
@@ -151,7 +243,7 @@ def load_delta(delta_input_dir, var_name, era5_date_time,
         # replace delta year values with year of current target_date_time
         for i in range(len(full_delta.time)):
             full_delta.time.values[i] = dt64_to_dt(
-                        full_delta.time[i]).replace(
+                        full_delta.time.values[i]).replace(    #? FIX (added .values[])
                                 year=target_date_time.year)
 
         # find time index of climate delta before target time
@@ -171,7 +263,7 @@ def load_delta(delta_input_dir, var_name, era5_date_time,
             ind_before = -1
             before = full_delta.isel(time=ind_before)
             before.time.values = dt64_to_dt(
-                        before.time).replace(
+                        before.time.values).replace(    #? FIX (added .values[])
                                 year=target_date_time.year-1)
 
         # find time index of climate delta after target time
@@ -191,7 +283,7 @@ def load_delta(delta_input_dir, var_name, era5_date_time,
             ind_after = 0
             after = full_delta.isel(time=ind_after)
             after.time.values = dt64_to_dt(
-                        after.time).replace(
+                        after.time.values).replace(    #? FIX (added .values[])
                                 year=target_date_time.year+1)
 
         # if target time is exactly contained in climate delta
@@ -249,7 +341,7 @@ def load_delta_interp(delta_input_dir, var_name, target_P,
         - load a climate delta
         - for specific variables (ta and hur) also load surface
           climate delta,
-          as well as CTRL surface pressure. This is to extend
+          as well as HIST surface pressure. This is to extend
           the 3D climate deltas with surface values which makes
           the interpolation to the ERA5 model levels more precise.
         - vertically interpolate climate deltas to ERA5 model levels
@@ -266,7 +358,7 @@ def load_delta_interp(delta_input_dir, var_name, target_P,
                             era5_date_time, target_date_time)
         ps_hist = load_delta(delta_input_dir, 'ps', 
                             era5_date_time, target_date_time,
-                            name_base=file_name_bases['CTRL'])
+                            name_base=file_name_bases['HIST'])
     else:
         delta_sfc = None
         ps_hist = None
@@ -281,7 +373,7 @@ def replace_delta_sfc(source_P, ps_hist, delta, delta_sfc):
     """
     In the 3D climate deltas, replace the value just below
     the surface by the surface climate delta value and insert
-    it at CTRL surface pressure. This improves the precision
+    it at HIST surface pressure. This improves the precision
     of the climate deltas during interpolation to the ERA5 model levels.
     All 3D climate delta values below the historical surface pressure
     are set to the surface value (constant extrapolation). This is
@@ -350,7 +442,7 @@ def vert_interp_delta(delta, target_P, delta_sfc=None, ps_hist=None,
 
     # make sure there is no extrapolation at the model top
     # unless these levels are anyways not important for the user
-    # and she/he manually sets ignore_top_pressure_error=True
+    # and they manually set ignore_top_pressure_error=True
     if np.min(target_P) < np.min(source_P):
         if not ignore_top_pressure_error:
             raise ValueError('ERA5 top pressure is lower than '+
@@ -584,7 +676,7 @@ def filter_data(annualcycleraw, variablename_to_smooth, outputpath):
 		xgrids = Diff.shape[2]
 		levels = 0
 	else:
-		sys.exit('Wrog dimensions of input file should be 3 or 4-D')
+		sys.exit('Wrong dimensions of input file should be 3 or 4-D')
 
 
 	if len(Diff.shape) == 4:
@@ -620,13 +712,16 @@ def harmonic_ac_analysis(ts):
     Is incomplete since it is only for use in surrogate smoothing 
     --> only the part of the formulas that is needed there
 
-    Arguments:
-        ts: a 1-d numpy array of a timeseries
+    Parameters
+    ----------
+    ts :  1D numpy array
+        Passes a time series
 
-    Returns:
-        hcts: a reconstructed smoothed timeseries 
+    Returns
+    -------
+        hcts : a reconstructed smoothed timeseries 
                 (the more modes are summed the less smoothing)
-        mean: the mean of the timeseries (needed for reconstruction)
+        mean : the mean of the timeseries (needed for reconstruction)
     """
 
     if np.any(np.isnan(ts) == True): #if there are nans, return nans
@@ -685,7 +780,23 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
     Method to do lat/lon bilinear interpolation for periodic or non-periodic
     grid either with xesmf (i_use_xesmf), or with an xarray-only 
     implementation if the xesmf package is not installed.
+    
+    Parameters
+    ----------
+    
+    ds_gcm: xr.array
+        Passes the original grid and data from the gcm
+    ds_era5 : xr.array
+        Passes the target grid data to interpolate to
+    var_name : string
+        Passes the name of the variable to interpolate
+    
+    Returns
+    -------
+    ds_regridded : np.ndarray
+        ds_gcm interpolated to the ds_era5 grid
     """
+
     if method != 'bilinear':
         NotImplementedError()
 
@@ -808,7 +919,259 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
         ds_gcm = ds_gcm.interp({LON_GCM:targ_lon})
 
     ## test for NaN
-    if np.sum(np.isnan(ds_gcm[var_name])).values > 0:
-        raise ValueError('NaN in GCM dataset after interpolation.')
+    #if np.sum(np.isnan(ds_gcm[var_name])).values > 0:
+    #    raise ValueError('NaN in GCM dataset after interpolation.')
 
     return(ds_gcm)
+
+def nan_ignoring_interp(da_era5_land_fr, da_delta, kernel_radius, sharpness):
+    """Point cloud based NaN-ignoring interpolation from unstructured to regular lon/lat grid
+
+    This function takes an xarray 2D array with individual lon/lat coordinates and 
+    uses pyvista.interpolate() to interpolate that grid to a regular lon/lat grid. This function
+    will ignore all NaN values present in the unstructured grid.
+
+    Parameters
+    ----------
+
+    da_era5_land_fr : xr.array
+        Passes the ERA5 land fraction and grid data
+    da_delta : xr.array
+        Passes the unstructured array from which to interpolate
+    radius : scaler
+        Passes a maximal distance for interpolation 
+    
+    Returns
+    -------
+    new_era5_grid : np.ndarray
+        da_delta interpolated to the ERA5 grid
+    """
+
+    #-------------------
+    #PREPROCESSING GCM DATA
+    #-------------------
+
+    #Construct lon and lat arrays for point cloud by flattening them into an array
+    gcm_lat_raw = da_delta.coords[LAT_GCM_OCEAN].values.reshape(-1)
+    gcm_lon_raw = da_delta.coords[LON_GCM_OCEAN].values.reshape(-1)
+    gcm_val_raw = da_delta.values.reshape(-1)
+
+    # Change to -180,180 range. This simplifies the wrap-around from 0-360
+    for i in range(len(gcm_lon_raw)):
+        if gcm_lon_raw[i] > 180:
+            gcm_lon_raw[i] -= 360
+
+    #Remove NaN values and save NaN mask
+    nan_mask_curv = ~np.isnan(gcm_val_raw)
+    gcm_val = gcm_val_raw[nan_mask_curv]
+    gcm_lon = gcm_lon_raw[nan_mask_curv]
+    gcm_lat = gcm_lat_raw[nan_mask_curv]
+
+
+    # Convert lon/lat degrees to lon/lat kilometers
+
+    #First save the sign of the lon and lat array
+    sign_map_lat = np.sign(gcm_lat)
+    sign_map_lon = np.sign(gcm_lon)
+    #Specify which Earth model to use
+    geod = Geod(ellps="WGS84")
+    #Convert to km based scale. First two return arguments can be ignored as they are not relevant for this task
+    #and this function is still faster then alternatives due to numpy vectorizing
+    del1, del2, gcm_lat_meter = geod.inv(gcm_lon, np.zeros(len(gcm_lat)), gcm_lon, gcm_lat)
+    del1, del2, gcm_lon_meter = geod.inv(np.zeros(len(gcm_lat)), gcm_lat, gcm_lon, gcm_lat)
+    del1, del2, lon_offset    = geod.inv(np.zeros(len(gcm_lat)), gcm_lat, np.ones(len(gcm_lat))*180, gcm_lat)
+    
+    #Add the signs back to the distances, so that we can have minus coords
+    gcm_lat_meter = np.multiply(gcm_lat_meter, sign_map_lat)
+    gcm_lon_meter = np.multiply(gcm_lon_meter, sign_map_lon)
+    
+    #Implement Boundary points
+    gcm_val_bd = np.empty(len(gcm_val)*3)
+    gcm_lon_bd = np.empty(len(gcm_lon_meter)*3)
+    gcm_lat_bd = np.empty(len(gcm_lat_meter)*3)
+    
+    gcm_val_bd[:] = np.tile(gcm_val, 3)
+    gcm_lat_bd[:] = np.tile(gcm_lat_meter, 3)
+    gcm_lon_bd[:] = np.tile(gcm_lon_meter, 3)
+
+    gcm_lon_bd[:len(gcm_lon_meter)] -= lon_offset * 2
+    gcm_lon_bd[2*len(gcm_lon_meter):] += lon_offset * 2
+
+
+    #Create grid matrix for further use in the interpolation scheme
+    #3rd dim is needed for the interpolation library but can be ignored
+    curv_points = np.zeros((gcm_lat_bd.shape[0], 3))
+    curv_points[:,0] = gcm_lat_bd
+    curv_points[:,1] = gcm_lon_bd
+
+    #-------------------
+    #PREPROCESSING ERA5 DATA
+    #-------------------
+
+    #Extract Era5 values from xarray
+    era5_val_raw = da_era5_land_fr.values.reshape(-1)
+    era5_lat_raw = da_era5_land_fr.coords[LAT_ERA].values
+    era5_lon_raw = da_era5_land_fr.coords[LON_ERA].values
+
+    # Change to -180,180 range if needed
+    for i in range(len(era5_lon_raw)):
+        if era5_lon_raw[i] > 180:
+            era5_lon_raw[i] -= 360
+
+    #Create flatten lon and lat arrays
+    era5_lat_flatten = np.repeat(era5_lat_raw, len(era5_lon_raw))
+    era5_lon_flatten = np.tile(era5_lon_raw, len(era5_lat_raw))
+
+    #Repeat the conversion to km
+    sign_map_lat = np.sign(era5_lat_flatten)
+    sign_map_lon = np.sign(era5_lon_flatten)
+    del1, del2, era5_lat_meter = geod.inv(era5_lon_flatten, np.zeros(len(era5_lat_flatten)), 
+            era5_lon_flatten, era5_lat_flatten)
+    del1, del2, era5_lon_meter = geod.inv(np.zeros(len(era5_lon_flatten)), 
+            era5_lat_flatten, era5_lon_flatten, era5_lat_flatten) 
+    era5_lat_meter = np.multiply(era5_lat_meter,sign_map_lat)
+    era5_lon_meter = np.multiply(era5_lon_meter,sign_map_lon)
+
+    #Create grid matrix for further use in the interpolation scheme
+    #3rd dim is needed for the interpolation library but can be ignored
+    era5_points = np.zeros((era5_lat_meter.shape[0], 3))
+    era5_points[:,0] = era5_lat_meter
+    era5_points[:,1] = era5_lon_meter
+
+    # Create masks pure_ocean and frac_ocean for use of the masking land values later on
+    land_map = np.where(era5_val_raw > 0.7)[0]
+
+    #-------------------
+    #Computing the interpolation
+    #-------------------
+    #Set up pyvista unstructured grids for both gcm and era5 data
+    grid = PolyData(era5_points)
+    points = PolyData(curv_points)
+    #Fill gcm sst into the grid
+    points['values'] = gcm_val_bd
+    #Core interpolation: mask land values with empty and only consider points in a certain radius
+    grid = grid.interpolate(
+        points, 
+        null_value=np.nan,
+        radius=kernel_radius, 
+        sharpness=sharpness
+    )
+    #-------------------
+    #POSTPROCESSING ERA5 DATA
+    #-------------------
+    
+    #Save result
+    result = grid['values']
+    #Overlay land mask to negate sst propagation onto land
+    result[land_map] = np.nan
+    
+    # Reshape back to matrix
+    return result.reshape((len(era5_lat_raw),len(era5_lon_raw)))
+
+def interp_wrapper(
+    origin_grid, 
+    target_grid, 
+    var_name, 
+    i_use_xesmf=0, 
+    nan_interp_kernel_radius=300000,
+    nan_interp_sharpness=3,
+    ):
+    """Interpolation wrapper that allows for each variable to be assigned a custom scheme
+
+    This function implements for different variables different kinds of interpoaltion. Default is bi-linear
+    interpolation from regular grid to regular grid.
+
+    Parameters
+    ----------
+
+    origin_grid : xr.array
+        Passes the GCM original grid structure and values
+    target_grid : xr.array
+        Passes target grid structure to interpolate
+    i_use_xesmf = boolean
+        Passes booloean to adjust which bi-linear scheme is used, only applicable for athmospheric variables
+    radius : scaler
+        Passes a maximal distance for interpolation, only applicable for ocean variables 
+    
+    Returns
+    -------
+    new_era5_grid : xr.DataSet
+        da_delta interpolated to the ERA5 grid
+    """
+    #Custom interpolation for TOS
+    if var_name == 'tos':
+        land_fraction = target_grid["FR_LAND"][0,:,:]
+        tos_values = origin_grid['tos']
+        
+        #Interpolate all 12 months indivdually
+        result = np.empty((12,len(target_grid[LAT_ERA]), len(target_grid[LON_ERA])))
+        for i in range(12):
+            result[i,:,:] = nan_ignoring_interp(
+                land_fraction, 
+                tos_values[i,:,:], 
+                kernel_radius=nan_interp_kernel_radius,
+                sharpness=nan_interp_sharpness
+            )
+        
+        #Save into xr.Dataset
+        ds = xr.Dataset(
+            data_vars=dict(
+                tos=(["time","lat", "lon"], result),
+            ),
+            coords=dict(
+                lat=(["lat"], target_grid[LAT_ERA].data),
+                lon=(["lon"], target_grid[LON_ERA].data),
+                time=origin_grid[TIME_GCM]
+            ),
+            attrs=dict(description="SST on ERA5 grid", units="K", long_name="Sea Surface Temperature"),
+        )
+    #Default interpolation
+    else:
+        ds = regrid_lat_lon(origin_grid, target_grid, var_name,
+                        method='bilinear',
+                        i_use_xesmf=i_use_xesmf)
+    return ds
+
+def integrate_tos(tos_field, tas_field, land_frac, ice_frac):
+    """Combines TOS and TAS temperature as a weighted according to land and ocean contribution
+    
+    This functions assumes that all fields are on the same grid!
+
+    Parameters
+    ----------
+    tos_field : 2d.nparray
+        Passes TOS field on ERA5 grid
+    tas_field : 2d.nparray
+        Passes TAS field on ERA5 grid
+    land_frac : 2d.nparray
+        Passes land fraction on ERA5 grid
+    ice_field : 2d.nparray
+        Passes sea ice fraction on ERA5 grid
+
+    
+    Returns
+    -------
+    combined_tas : 2d.nparray
+        Returns combined temperature fields
+    """
+    #Save dims to reshape the original grid
+    dims = tos_field.shape
+    #Ocean mask
+    ice_frac = ice_frac.reshape(-1)
+    tos_field = tos_field.reshape(-1)
+    #TODO add cases for true mask
+
+    mask = ~np.isnan(ice_frac) & ~np.isnan(tos_field)
+    #Turn all fields into arrays for easier accessing
+    ice_frac_masked  = ice_frac[mask]
+    land_frac_masked = land_frac.reshape(-1)[mask]
+    tos_field_masked = tos_field.reshape(-1)[mask]
+    tas_field_masked = tas_field.reshape(-1)[mask]
+    #Arrays to save output in
+    output = np.ones(len(tos_field.reshape(-1)))
+    output[:] = tas_field.reshape(-1)
+    
+    tas_frac = np.clip(ice_frac_masked + land_frac_masked, 0, 1)
+    output[mask] = np.add(np.multiply(tas_frac, tas_field_masked), np.multiply(1-tas_frac, tos_field_masked))
+    
+    return output.reshape(dims)

@@ -2,21 +2,24 @@
 # -*- coding: utf-8 -*-
 """
 description     PGW for ERA5 preprocessing of climate deltas
-authors		    Before 2022: original developments by Roman Brogli
-                Since 2022:  upgrade to PGW for ERA5 by Christoph Heim 
+authors		Before 2022:    original developments by Roman Brogli
+                Since 2022:     upgrade to PGW for ERA5 by Christoph Heim 
+                2022:           udpates by Jonas Mensch
 """
 ##############################################################################
 import os, argparse
 import xarray as xr
 import numpy as np
 from pathlib import Path
-from functions import filter_data, regrid_lat_lon
+from functions import filter_data, regrid_lat_lon, interp_wrapper
 from settings import (
     i_debug,
     file_name_bases,
     LON_ERA, LAT_ERA,
     TIME_GCM, PLEV_GCM, LON_GCM, LAT_GCM,
     i_use_xesmf_regridding,
+    nan_interp_kernel_radius,
+    nan_interp_sharpness,
 )
 ##############################################################################
 
@@ -24,16 +27,16 @@ from settings import (
 parser = argparse.ArgumentParser(description =
             'PGW for ERA5: Preprocess GCM data before modifying ' +
             'the ERA5 files. The main PGW routine (step_03_apply_to_era.py) ' +
-            'requires GCM climate delta files (SCEN-CTRL) for ' +
-            'ta,hur,ua,va,zg,hurs,tas as well ' +
-            'as the GCM CTRL climatology file for ps. This script here by ' +
-            'default preprocesses both the SCEN-CTRL and CTRL files ' +
+            'requires GCM climate delta files (SCEN-HIST) for ' +
+            'ta,hur,ua,va,zg,hurs,tas,tos as well ' +
+            'as the GCM HIST climatology file for ps. This script here by ' +
+            'default preprocesses both the SCEN-HIST and HIST files ' +
             'for the variables it is run for. Both are thus required for ' +
             'every variable being processed. The script ' +
             'looks for the inputs files using the naming convention ' +
             '${var_name}_${file_name_base}.nc, where the ${file_name_base} ' +
-            'for the SCEN-CTRL and the CTRL files ' +
-            'can be set in settings.py, among other things. If this script ' +
+            'for the SCEN-HIST and the HIST files ' +
+            'can be set in settings.py. If this script ' +
             'is used to preprocess daily GCM data, one can run it twice and '+
             'store the intermediate results: once '+
             'for processing_step "smoothing" and once for "regridding". ' +
@@ -60,7 +63,7 @@ parser.add_argument('processing_step', type=str,
 
 # input directory
 parser.add_argument('-i', '--input_dir', type=str,
-            help='Directory with input GCM data files (SCEN-CTRL, CTRL) ' +
+            help='Directory with input GCM data files (SCEN-HIST, HIST) ' +
             'for selected processing step.')
 
 # output directory
@@ -78,7 +81,7 @@ parser.add_argument('-v', '--var_names', type=str,
             help='Variable names (e.g. tas) to process. Separate ' +
             'multiple variable names with "," (e.g. tas,ta). Default is ' +
             'to process all required variables ta,hur,ua,va,zg,hurs,tas,ps.',
-            default='ta,hur,ua,va,zg,hurs,tas,ps')
+            default='ta,hur,ua,va,zg,hurs,tas,ps,tos')
 
 
 args = parser.parse_args()
@@ -106,15 +109,22 @@ print('Run {} for variable names {}.'.format(
 # iterate over all variables to preprocess
 for var_name in var_names:
     print(var_name)
+    #if var_name == 'ps':
+    #    clim_periods = ['HIST','SCEN-HIST']
+    #else:
+    #    clim_periods = ['SCEN-HIST']
+    clim_periods = ['HIST','SCEN-HIST']
     # iterate over the two types of GCM data files
-    # (CTRL and SCEN-CTRL)
-    for clim_period in ['CTRL', 'SCEN-CTRL']:
+    # (HIST and SCEN-HIST)
+    for clim_period in clim_periods:
 
         var_file_name = file_name_bases[clim_period].format(var_name)
 
         inp_file = os.path.join(args.input_dir, var_file_name)
         out_file = os.path.join(args.output_dir, var_file_name)
 
+        # open ERA5 file with target grid
+        ds_era5 = xr.open_dataset(args.era5_file_path)
 
         ## smoothing
         if args.processing_step == 'smoothing':
@@ -123,13 +133,18 @@ for var_name in var_names:
 
         ## regridding
         elif args.processing_step == 'regridding':
+            try:
+                ds_gcm = xr.open_dataset(inp_file)
+            except:
+                raise("Files for variable " + var_name + " are missing")
             
-            ds_gcm = xr.open_dataset(inp_file)
-            ds_era5 = xr.open_dataset(args.era5_file_path)
-
-            ds_gcm = regrid_lat_lon(ds_gcm, ds_era5, var_name,
-                                    method='bilinear',
-                                    i_use_xesmf=i_use_xesmf_regridding)
-
+            ds_gcm = interp_wrapper(
+                ds_gcm, 
+                ds_era5, 
+                var_name, 
+                i_use_xesmf=i_use_xesmf_regridding,
+                nan_interp_kernel_radius=nan_interp_kernel_radius,
+                nan_interp_sharpness=nan_interp_sharpness,
+            )
+            
             ds_gcm.to_netcdf(out_file)
-

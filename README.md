@@ -5,12 +5,12 @@ as described e.g. here https://iopscience.iop.org/article/10.1088/1748-9326/ab44
 here https://doi.org/10.1175/JCLI-D-18-0431.1
 
 # General Documentation
-To modify the ERA5 files, we need a climate change signal obtained from the difference between two GCM climatologies, CTRL and SCEN. The climate change signal is thus SCEN-CTRL and referred to as climate delta.
+To modify the ERA5 files, we need a climate change signal obtained from the difference between two GCM climatologies, HIST and SCEN. The climate change signal is thus SCEN-HIST and referred to as climate delta.
 
 The structure of the repository is built as follows:
 
 The top level directory contains the central scripts to preprocess the GCM climate change signal [step_02_preproc_deltas.py](/step_02_preproc_deltas.py) and to modify the ERA5 files [step_03_apply_to_era.py](/step_03_apply_to_era.py) with the climate change signal.
-An additional directory contains less generic code that can serve as a template to obtain the GCM climatologies CTRL, SCEN, as well as the climate delta SCEN-HIST from raw CMIP6 output [step_01_extract_deltas](/step_01_extract_deltas/). This script has to be adjusted depending on the specific use case.
+An additional directory contains less generic code that can serve as a template to obtain the GCM climatologies HIST, SCEN, as well as the climate delta SCEN-HIST from raw CMIP6 output [step_01_extract_deltas](/step_01_extract_deltas/). This script has to be adjusted depending on the specific use case.
 
 Note that essential usage-oriented information can be found by running `python step_02_preproc_deltas.py --help` and `python step_03_apply_to_era.py --help`.
 
@@ -24,7 +24,7 @@ To install the enviroment, just execute `conda env create -f environment.yml` on
 
 **Requeriments**
 
-Annual climate deltas (SCEN-CTRL) and control climatology (CTRL) from a global climate model in either daily or monthly steps.
+Annual climate deltas (SCEN-HIST) and a historical climatology (HIST) from a global climate model in either daily or monthly steps.
 Climate deltas refer to the difference between the fields predicted by the climate model between two different time periods (usually future and present). If climate model data in the CMOR format (e.g. CMIP simulations) will be used to force the PGW simulations there is a practical [documentation](/Documentations/README_CMOR.md) on which variables are needed.
 Template scripts to extract CMIP6 data are given in [step_01_extract_deltas](/step_01_extract_deltas/), e.g. [this one](/step_01_extract_deltas/extract_climate_delta.sh).
 
