@@ -125,22 +125,6 @@ def relative_to_specific_humidity(hur, pa, ta):
     return(hus)
 
 
-#def specific_to_relative_humidity(hus, pa, ta):
-#    """
-#    Compute relative humidity from specific humidity.
-#    """
-#    hur = 0.263 * pa * hus *(np.exp(17.67*(ta - 273.15)/(ta-29.65)))**(-1)
-#    return(hur)
-#
-#
-#def relative_to_specific_humidity(hur, pa, ta):
-#    """
-#    Compute specific humidity from relative humidity.
-#    """
-#    hus = (hur  * np.exp(17.67 * (ta - 273.15)/(ta - 29.65))) / (0.263 * pa)
-#    return(hus)
-
-
 def integ_geopot(pa_hl, zgs, ta, hus, level1, p_ref):
     """
     Integrate ERA5 geopotential from surfce to a reference pressure
@@ -312,27 +296,6 @@ def load_delta(delta_input_dir, var_name, era5_date_time,
     return(delta)
 
 
-### TODO DEBUG START
-#def load_delta_old(delta_inp_path, var_name, era5_date_time, 
-#               delta_date_time=None, name_base='{}_delta.nc'):
-#    """
-#    Load a climate delta and if delta_date_time is given,
-#    interpolate it to that date and time of the year.
-#    """
-#
-#    def hour_of_year(dt): 
-#        beginning_of_year = datetime(dt.year, 1, 1, tzinfo=dt.tzinfo)
-#        return(int((dt - beginning_of_year).total_seconds() // 3600))
-#    name_base = name_base.split('.nc')[0] + '_{:05d}.nc'
-#    diff_time_step = int(hour_of_year(delta_date_time)/3)
-#    delta = xr.open_dataset(os.path.join(delta_inp_path,
-#            name_base.format(var_name, diff_time_step)))[var_name]
-#    # make sure time is in the same format as in laf file
-#    delta['time'] = era5_date_time
-#
-#    return(delta)
-### TODO DEBUG STOP
-
 def load_delta_interp(delta_input_dir, var_name, target_P,
                     era5_date_time, target_date_time,
                     ignore_top_pressure_error=False):
@@ -349,8 +312,9 @@ def load_delta_interp(delta_input_dir, var_name, target_P,
     delta = load_delta(delta_input_dir, var_name, 
                         era5_date_time, target_date_time)
 
-    ## for specific variables also load climate delta for surface
-    ## values and the historical surface pressure.
+    ## for ta and hur variables also load climate delta for near surface
+    ## values and the historical surface pressure to improve vertical
+    ## interpolation
     if var_name in ['ta','hur']:
     #if var_name in []:
         sfc_var_name = var_name + 's'
@@ -1132,8 +1096,8 @@ def interp_wrapper(
                         i_use_xesmf=i_use_xesmf)
     return ds
 
-def integrate_tos(tos_field, tas_field, land_frac, ice_frac):
-    """Combines TOS and TAS temperature as a weighted according to land and ocean contribution
+def integrate_tos(tos_field, ts_field, land_frac, ice_frac):
+    """Combines TOS and TS temperature as a weighted according to land and ocean contribution
     
     This functions assumes that all fields are on the same grid!
 
@@ -1141,8 +1105,8 @@ def integrate_tos(tos_field, tas_field, land_frac, ice_frac):
     ----------
     tos_field : 2d.nparray
         Passes TOS field on ERA5 grid
-    tas_field : 2d.nparray
-        Passes TAS field on ERA5 grid
+    ts_field : 2d.nparray
+        Passes TS field on ERA5 grid
     land_frac : 2d.nparray
         Passes land fraction on ERA5 grid
     ice_field : 2d.nparray
@@ -1151,7 +1115,7 @@ def integrate_tos(tos_field, tas_field, land_frac, ice_frac):
     
     Returns
     -------
-    combined_tas : 2d.nparray
+    combined_ts : 2d.nparray
         Returns combined temperature fields
     """
     #Save dims to reshape the original grid
@@ -1166,12 +1130,12 @@ def integrate_tos(tos_field, tas_field, land_frac, ice_frac):
     ice_frac_masked  = ice_frac[mask]
     land_frac_masked = land_frac.reshape(-1)[mask]
     tos_field_masked = tos_field.reshape(-1)[mask]
-    tas_field_masked = tas_field.reshape(-1)[mask]
+    ts_field_masked = ts_field.reshape(-1)[mask]
     #Arrays to save output in
     output = np.ones(len(tos_field.reshape(-1)))
-    output[:] = tas_field.reshape(-1)
+    output[:] = ts_field.reshape(-1)
     
-    tas_frac = np.clip(ice_frac_masked + land_frac_masked, 0, 1)
-    output[mask] = np.add(np.multiply(tas_frac, tas_field_masked), np.multiply(1-tas_frac, tos_field_masked))
+    ts_frac = np.clip(ice_frac_masked + land_frac_masked, 0, 1)
+    output[mask] = np.add(np.multiply(ts_frac, ts_field_masked), np.multiply(1-ts_frac, tos_field_masked))
     
     return output.reshape(dims)

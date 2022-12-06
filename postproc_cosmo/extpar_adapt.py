@@ -4,7 +4,7 @@ from functions import load_delta
 
 
 var_name_map = {
-    'tas':  'T_CL',
+    'ts':   'T_CL',
 }
 
 
@@ -15,23 +15,21 @@ def extpar_adapt(ext_file_path, delta_inp_path):
     ext_file = Dataset(ext_file_path, 'a')
 
     # update T_C
-    var_name = 'tas'
-    print('update {}'.format(var_name))
+    print('update deep soil temperature')
 
-    name_base='{}_delta.nc'
-    delta_tas = load_delta(delta_inp_path, var_name, None)
-    print(delta_tas)
+    delta_ts = load_delta(delta_inp_path, 'ts', None)
 
     ## Make sure dimensions are exactly the same.
     ## There are numerical differences between CDO remapped objects
     ## and xarray data...
-    #delta_tas = delta_tas.assign_coords(
+    #delta_ts = delta_ts.assign_coords(
     #                {'rlat':ext_file.rlat.values,
     #                 'rlon':ext_file.rlon.values})
 
-    delta_tas_clim = delta_tas.mean(dim=['time'])
+    delta_ts_clim = delta_ts.mean(dim=['time'])
+    print(delta_ts_clim)
 
-    ext_file['T_CL'][:] += delta_tas_clim.values.squeeze()
+    ext_file['T_CL'][:] += delta_ts_clim.values.squeeze()
 
     ext_file.close()
     print('Done.')

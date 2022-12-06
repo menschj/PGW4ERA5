@@ -78,10 +78,10 @@ parser.add_argument('-e', '--era5_file_path', type=str, default=None,
 
 # variable(s) to process
 parser.add_argument('-v', '--var_names', type=str,
-            help='Variable names (e.g. tas) to process. Separate ' +
+            help='Variable names (e.g. ta) to process. Separate ' +
             'multiple variable names with "," (e.g. tas,ta). Default is ' +
-            'to process all required variables ta,hur,ua,va,zg,hurs,tas,ps.',
-            default='ta,hur,ua,va,zg,hurs,tas,ps,tos')
+            'to process all required variables ta,hur,ua,va,zg,hurs,tas,ps,tos,ts.',
+            default='ta,hur,ua,va,zg,hurs,tas,ps,tos,ts')
 
 
 args = parser.parse_args()

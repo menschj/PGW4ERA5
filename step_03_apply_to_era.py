@@ -97,46 +97,46 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     ### UPDATE SURFACE AND SOIL TEMPERATURE
     #########################################################################
     # update surface skin temperature using SST delta over sea and and 
-    # near-surface temperature delta over land and over sea ice
+    # surface skin temperature delta over land and over sea ice
     if i_debug >= 2:
         print('update surface skin temperature (ts)')
-    # load near surface temperature climate delta
+    # load surface temperature climate delta
     #(for grid points over land and sea ice)
-    delta_tas = load_delta(delta_input_dir, 'tas',
+    delta_ts = load_delta(delta_input_dir, 'ts',
                            era_file[TIME_ERA], era_step_dt)
     # load SST climate delta (for grid points over open water)
     delta_tos = load_delta(delta_input_dir, 'tos',
                            era_file[TIME_ERA], era_step_dt)
     # combine using land and sea-ice mask in ERA5
-    delta_combined = integrate_tos(
+    delta_ts_combined = integrate_tos(
         delta_tos.values,
-        delta_tas.values, 
+        delta_ts.values, 
         era_file[var_name_map['sftlf']].isel({TIME_ERA:0}).values, 
         era_file[var_name_map['sic']].isel({TIME_ERA:0}).values
     )
-    era_file[var_name_map['ts']].values += delta_combined
-    delta_tas.values = delta_combined
+    era_file[var_name_map['ts']].values += delta_ts_combined
+    delta_ts.values = delta_ts_combined
     # store delta for output in case of --debug_mode = interpolate_full
-    deltas['ts'] = delta_tas
+    deltas['ts'] = delta_ts
 
     # update temperature of soil layers
     if i_debug >= 2:
         print('update soil layer temperature (st)')
     # set climatological lower soil temperature delta to annual mean
-    # climate delta of near-surface temperature.
-    delta_st_clim = load_delta(delta_input_dir, 'tas',
+    # climate delta of surface skin temperature.
+    delta_st_clim = load_delta(delta_input_dir, 'ts',
                             era_file[TIME_ERA], 
                             target_date_time=None).mean(dim=[TIME_GCM])
     # interpolate between surface temperature and deep soil temperature
     # using exponential decay of annual cycle signal
-    delta_st = (
+    delta_soilt = (
             delta_st_clim + np.exp(-era_file.soil1/2.8) * 
-                    (delta_tas - delta_st_clim)
+                    (delta_ts - delta_st_clim)
     )
-    delta_st = delta_st.transpose(TIME_ERA, SOIL_HLEV_ERA, LAT_ERA, LON_ERA)
-    era_file[var_name_map['st']].values += delta_st
+    delta_soilt = delta_soilt.transpose(TIME_ERA, SOIL_HLEV_ERA, LAT_ERA, LON_ERA)
+    era_file[var_name_map['st']].values += delta_soilt
     # store delta for output in case of --debug_mode = interpolate_full
-    deltas['st'] = delta_st
+    deltas['st'] = delta_soilt
 
     #########################################################################
     ### START UPDATING 3D FIELDS
@@ -282,7 +282,6 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         delta_phi_ref = phi_ref_pgw - phi_ref_era
 
         ## load climate delta at currently used reference pressure level
-        #?Load delta is roughly 0.2s from storage and 0.07 from RAM
         climate_delta_phi_ref = load_delta(delta_input_dir, 'zg',
                             era_file[TIME_ERA], era_step_dt) * CON_G
         climate_delta_phi_ref = climate_delta_phi_ref.sel({PLEV_GCM:p_ref})
@@ -291,6 +290,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         # error in future geopotential
         phi_ref_error = delta_phi_ref - climate_delta_phi_ref
 
+        # adjust surface pressure by some amount in the right direction
         adj_ps = - adj_factor * ps_pgw / (
                 CON_RD * 
                 vars_pgw['ta'].sel({LEV_ERA:np.max(era_file[LEV_ERA])})
@@ -393,27 +393,15 @@ def debug_interpolate_time(
     var_names = ['tos','tas','hurs','ps','ta','hur','ua','va','zg']
     for var_name in var_names:
         print(var_name)
-        #name_base = climate_delta_file_name_base
-        ## for ps take era climatology file while for all other variables
-        ## take climate delta file
-        #if var_name == 'ps':
-        #    name_base = era_climate_file_name_base
-        #else:
-        #    name_base = climate_delta_file_name_base
-        #name_base = climate_delta_file_name_base
-        # create gcm input file name (excluding ".nc")
-        #?gcm_file_name = name_base.format(var_name).split('.nc')[0]
         # creat output file name
         out_file_path = os.path.join(Path(out_era_file_path).parents[0],
-                                    '{}_{}_{}'.format("delta",var_name,#?gcm_file_name, 
+                                    '{}_{}_{}'.format("delta",var_name, 
                                         Path(out_era_file_path).name))
         # load climate delta interpolated in time only
         delta = load_delta(delta_input_dir, var_name, era_file[TIME_ERA], 
                        target_date_time=era_step_dt)
-                       #? name_base=name_base)
         # convert to dataset
         delta = delta.to_dataset(name=var_name)
-
         delta.to_netcdf(out_file_path, mode='w')
     era_file.close()
 
@@ -537,7 +525,7 @@ if __name__ == "__main__":
     parser.add_argument('-d', '--delta_input_dir', type=str, default=None,
             help='Directory with GCM climate deltas (SCEN-HIST) to be used. ' +
             'This directory should have a climate delta for ta,hur,' +
-            'ua,va,zg,tas,hurs (e.g. ta_delta.nc), as well as the ' +
+            'ua,va,zg,tas,hurs,ts,tos (e.g. ta_delta.nc), as well as the ' +
             'HIST climatology value for ps (e.g. ps_historical.nc). ' +
             'All files have to be horizontally remapped to the grid of ' +
             'the ERA5 files used (see step_02_preproc_deltas.py).')
