@@ -45,7 +45,7 @@ if __name__ == "__main__":
 
     ## input arguments
     parser = argparse.ArgumentParser(description =
-                    'COSMO-specific: Perturb Extpar soil temperature climatology with PGW climate delta.')
+                    'COSMO-specific: Perturb Extpar soil temperature climatology with ts climate delta.')
     # extpar file to modify
     parser.add_argument('extpar_file_path', type=str,
             help='Path to extpar file to modify T_CL.')
@@ -53,9 +53,10 @@ if __name__ == "__main__":
     # climate delta directory (already remapped to ERA5 grid)
     parser.add_argument('-d', '--delta_input_dir', type=str, default=None,
             help='Directory with GCM climate deltas to be used. ' +
-            'This directory should have a climate delta for tas ' +
+            'This directory should have a climate delta for ts ' +
             'already horizontally remapped to the grid of ' +
-            'the extpar file (see step_02_preproc_deltas.py).')
+            'the extpar file which can perhaps be done with ' +
+            'step_02_preproc_deltas.py or otherwise with CDO.')
     args = parser.parse_args()
     print(args)
 

@@ -14,9 +14,11 @@ An additional directory contains less generic code that can serve as a template 
 
 Note that essential usage-oriented information can be found by running `python step_02_preproc_deltas.py --help` and `python step_03_apply_to_era.py --help`.
 
+Note that users that feed the processed ERA5 files into Int2lm (to run COSMO or ICON) should also modify the variable T_CL in their external parameter file, see postproc_cosmo for more information.
+
 # Software Requirements
 
-The software is written in python 3 and requires multiple python modules. The ennvironment-file **pgw_conda_env.yml** can be used to install a conda environment to run the software. More information about what conda is and how it works: https://docs.conda.io/projects/conda/en/latest/user-guide/index.html#
+The software is written in python 3 and requires multiple python modules. The ennvironment-file **environment.yml** can be used to install a conda environment to run the software. More information about what conda is and how it works: https://docs.conda.io/projects/conda/en/latest/user-guide/index.html#
 
 To install the enviroment, just execute `conda env create -f environment.yml` once conda is installed. 
 
