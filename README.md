@@ -28,23 +28,15 @@ To install the enviroment, just execute `conda env create -f environment.yml` on
 
 Annual climate deltas (SCEN-HIST) and a historical climatology (HIST) from a global climate model in either daily or monthly steps.
 Climate deltas refer to the difference between the fields predicted by the climate model between two different time periods (usually future and present). If climate model data in the CMOR format (e.g. CMIP simulations) will be used to force the PGW simulations there is a practical [documentation](/Documentations/README_CMOR.md) on which variables are needed.
-Template scripts to extract CMIP6 data are given in [step_01_extract_deltas](/step_01_extract_deltas/), e.g. [this one](/step_01_extract_deltas/extract_climate_delta.sh).
+Template scripts to extract CMIP6 data are given in [step_01_extract_deltas](/step_01_extract_deltas/), e.g. [here](/step_01_extract_deltas/extract_climate_delta.sh).
 
-**Input On Daily Timescale**
-
-Use settings.py or a similar script to set up the workflow. Run the following scripts:
-1) Smooth deltas in time: `python step_02_preproc_deltas.py smoothing [...]`
+After computing the raw climate deltas on the GCM grid, run the following scripts:
+1) Only if using daily climate deltas instead of monthly (note that is not really recommended), smooth deltas in time: `python step_02_preproc_deltas.py smoothing [...]`
 2) Regrid deltas to ERA5 grid: `python step_02_preproc_deltas.py regridding [...]`
 3) Modify ERA5 files: `python step_03_apply_to_era.py [...]`
 4) There may be some additional steps required for a specific limited-area model. For instance in COSMO, the deep soil temperature climatology has to be adjusted in the external parameters file. [postproc_cosmo](/postproc_cosmo/). 
 5) After these steps, the limited-area-model-specific routine to convert ERA5 files to model initial and boundary conditions can be runusing the modified ERA5 files as input.
 
-**Input on Monthly Timescale**
-
-Same procedure as for daily timescale but step 1) smoothing can be omitted and you can directly start with regridding.
-
 # References
-To acknowledge this software cite one of the following articles and/or doi: 
-[![DOI](https://zenodo.org/badge/233851849.svg)](https://zenodo.org/badge/latestdoi/233851849)
-1. Brogli, R., Kröner, N., Sørland, S. L., Lüthi, D., & Schär, C. (2019). The Role of Hadley Circulation and Lapse-Rate Changes for the Future European Summer Climate. Journal of Climate, 32, 385–404. https://doi.org/10.1175/JCLI-D-18-0431.1
-1. Brogli, R., Sørland, S. L., Kröner, N., & Schär, C. (2019). Causes of future Mediterranean precipitation decline depend on the season. Environmental Research Letters, 14, 114017. https://doi.org/10.1088/1748-9326/ab4438
+To acknowledge this software cite the following article: 
+Brogli, R., Heim, C., Mensch, J., Sørland, S. L., & Schär, C. (2023). The pseudo-global-warming (PGW) approach: Methodology, software package PGW4ERA5 v1.1, validation and sensitivity analyses. Geoscientific Model Development, preprint. https://doi.org/10.5194/gmd-2022-167 
