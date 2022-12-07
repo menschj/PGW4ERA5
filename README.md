@@ -35,8 +35,9 @@ After computing the raw climate deltas on the GCM grid, run the following script
 2) Regrid deltas to ERA5 grid: `python step_02_preproc_deltas.py regridding [...]`
 3) Modify ERA5 files: `python step_03_apply_to_era.py [...]`
 4) There may be some additional steps required for a specific limited-area model. For instance in COSMO, the deep soil temperature climatology has to be adjusted in the external parameters file. [postproc_cosmo](/postproc_cosmo/). 
-5) After these steps, the limited-area-model-specific routine to convert ERA5 files to model initial and boundary conditions can be runusing the modified ERA5 files as input.
+5) After these steps, the limited-area-model-specific routine to convert ERA5 files to model initial and boundary conditions can be run using the modified ERA5 files as input.
 
 # References
-To acknowledge this software cite the following article: 
+To acknowledge this software cite the following article:
+
 Brogli, R., Heim, C., Mensch, J., Sørland, S. L., & Schär, C. (2023). The pseudo-global-warming (PGW) approach: Methodology, software package PGW4ERA5 v1.1, validation and sensitivity analyses. Geoscientific Model Development, preprint. https://doi.org/10.5194/gmd-2022-167 
