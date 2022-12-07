@@ -7,7 +7,7 @@ authors		Before 2022:    original developments by Roman Brogli
                 2022:           udpates by Jonas Mensch
 """
 ##############################################################################
-import os, math
+import os,math,warnings
 import pandas as pd
 import xarray as xr
 import numpy as np
@@ -205,13 +205,20 @@ def load_delta(delta_input_dir, var_name, era5_date_time,
     ## convert time values to standard Pandas Datetimes
     ## this is to catch error arising from cftime.DatetimeNoLeap time format
     ## (https://stackoverflow.com/questions/54462798/cftime-datetimenoleap-object-fails-to-convert-with-pandas-to-datetime)
-    full_delta = full_delta.assign_coords(
-        time=full_delta.indexes['time']    #? FIX (removed .to_timedateindex())
-    )
-    #if not isinstance(full_delta.indexes['time'], pd.core.indexes.datetimes.DatetimeIndex):
-    #    full_delta = full_delta.assign_coords(
-    #        time=full_delta.indexes['time'].to_datetimeindex()
-    #    )
+    ## that is used by some models (e.g. GFDL, but not MPI-ESM1-2-HR)
+    ## but only do this if we do not already have a datetime index
+    if not isinstance(
+        full_delta.indexes['time'], 
+        pd.core.indexes.datetimes.DatetimeIndex
+    ):
+        # ignore warning with calendar conversion
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            # convert time to datetime index to convert calendar to standard pandas format
+            # to convert non-leap-year calendar to standard calendar
+            full_delta = full_delta.assign_coords(
+                time=full_delta.indexes['time'].to_datetimeindex()
+            )
 
     ## remove leap year february 29th if in delta
     leap_day = None
