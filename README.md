@@ -10,7 +10,7 @@ To modify the ERA5 files, we need a climate change signal obtained from the diff
 The structure of the repository is built as follows:
 
 The top level directory contains the central scripts to preprocess the GCM climate change signal [step_02_preproc_deltas.py](/step_02_preproc_deltas.py) and to modify the ERA5 files [step_03_apply_to_era.py](/step_03_apply_to_era.py) with the climate change signal.
-An additional directory contains less generic code that can serve as a template to obtain the GCM climatologies HIST, SCEN, as well as the climate delta SCEN-HIST from raw CMIP6 output [step_01_extract_deltas](/step_01_extract_deltas/). This script has to be adjusted depending on the specific use case.
+The subdirectory [step_01_extract_deltas](/step_01_extract_deltas/) contains less generic code that can serve as a template to obtain the GCM climatologies HIST, SCEN, as well as the climate delta SCEN-HIST from raw CMIP6 output. The starting point here is the script [extract_climate_delta.sh](/step_01_extract_deltas/extract_climate_delta.sh). This script has to be adjusted depending on the specific use case.
 
 Note that essential usage-oriented information can be found by running `python step_02_preproc_deltas.py --help` and `python step_03_apply_to_era.py --help`.
 

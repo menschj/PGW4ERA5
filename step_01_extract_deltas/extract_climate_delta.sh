@@ -57,9 +57,9 @@ done
 # USER SETTINGS
 ##############################################################################
 # base directory where cmip6 data is stored
-cmip_data_dir=/net/atmos/data/cmip6
+cmip_data_dir=/path/to/cmip6/data
 # base directory where output should be stored
-out_base_dir=/net/argon/hymet_nobackup/heimc/data/pgw/deltas/native
+out_base_dir=/path/to/processed/climate/deltas
 
 # name of the GCM to extract data for
 gcm_name=MPI-ESM1-2-HR
