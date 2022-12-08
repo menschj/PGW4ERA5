@@ -124,7 +124,7 @@ i_use_xesmf_regridding = 0
 # higher values imply that remote lakes (and bays) without GCM SST data will
 # receive data from further remote GCM SST grid points instead of falling
 # back to the tas (near surface temperature) climate delta
-nan_interp_kernel_radius = 300000 # m
+nan_interp_kernel_radius = 1000000 # m
 # sharpness: decrease (increase) for smoother (sharper) interpolation
 nan_interp_sharpness = 4
 
