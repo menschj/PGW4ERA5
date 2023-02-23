@@ -43,10 +43,8 @@ Usage="
 ## for specific use case.
 
 -h to see this message
--s <dataset_name> to get info on a specific data set (TODO)
-<> to get deltas for Amon dataset (should be removed later on)
 <dataset_name> to get the desired delta from this dataset
-    Curently supported are: Amon, Omon, Emon, day, CFday"
+    Curently supported are: Amon, Omon, Emon, day, CFday and SImon"
 
 while getopts 'h' flag; do
   case "${flag}" in
