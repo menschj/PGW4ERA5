@@ -80,8 +80,8 @@ parser.add_argument('-e', '--era5_file_path', type=str, default=None,
 parser.add_argument('-v', '--var_names', type=str,
             help='Variable names (e.g. ta) to process. Separate ' +
             'multiple variable names with "," (e.g. tas,ta). Default is ' +
-            'to process all required variables ta,hur,ua,va,zg,hurs,tas,ps,tos,ts.',
-            default='ta,hur,ua,va,zg,hurs,tas,ps,tos,ts')
+            'to process all required variables ta,hur,ua,va,zg,hurs,tas,ps,tos,ts,siconc.',
+            default='ta,hur,ua,va,zg,hurs,tas,ps,tos,ts,siconc')
 
 
 args = parser.parse_args()
@@ -109,11 +109,11 @@ print('Run {} for variable names {}.'.format(
 # iterate over all variables to preprocess
 for var_name in var_names:
     print(var_name)
-    #if var_name == 'ps':
+    # if var_name == 'ps':
     #    clim_periods = ['HIST','SCEN-HIST']
-    #else:
+    # else:
     #    clim_periods = ['SCEN-HIST']
-    clim_periods = ['HIST','SCEN-HIST']
+    clim_periods = ['SCEN-HIST']  # ['HIST', 'SCEN-HIST']
     # iterate over the two types of GCM data files
     # (HIST and SCEN-HIST)
     for clim_period in clim_periods:
@@ -126,12 +126,12 @@ for var_name in var_names:
         # open ERA5 file with target grid
         ds_era5 = xr.open_dataset(args.era5_file_path)
 
-        ## smoothing
+        # smoothing
         if args.processing_step == 'smoothing':
 
             filter_data(inp_file, var_name, out_file)
 
-        ## regridding
+        # regridding
         elif args.processing_step == 'regridding':
             try:
                 ds_gcm = xr.open_dataset(inp_file)
