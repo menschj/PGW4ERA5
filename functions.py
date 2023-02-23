@@ -1097,26 +1097,36 @@ def interp_wrapper(
             )
         
         #Save into xr.Dataset
-        ds = xr.Dataset(
-            data_vars=dict(
-                tos=(["time","lat", "lon"], result),
-            ),
-            coords=dict(
-                lat=(["lat"], target_grid[LAT_ERA].data),
-                lon=(["lon"], target_grid[LON_ERA].data),
-                time=origin_grid[TIME_GCM]
-            ),
-            attrs=dict(description=str(var_name) + " on ERA5 grid", units="K", long_name=str(var_name)),
-        )
+        if var_name == 'tos':
+
+            ds = xr.Dataset(
+                data_vars=dict(
+                    tos=(["time","lat", "lon"], result),
+                ),
+                coords=dict(
+                    lat=(["lat"], target_grid[LAT_ERA].data),
+                    lon=(["lon"], target_grid[LON_ERA].data),
+                    time=origin_grid[TIME_GCM]
+                ),
+                attrs=dict(description=str(var_name) + " on ERA5 grid", units="K", long_name=str(var_name)),
+            )
+        else:
+            ds = xr.Dataset(
+                data_vars=dict(
+                    siconc=(["time","lat", "lon"], result),
+                ),
+                coords=dict(
+                    lat=(["lat"], target_grid[LAT_ERA].data),
+                    lon=(["lon"], target_grid[LON_ERA].data),
+                    time=origin_grid[TIME_GCM]
+                ),
+                attrs=dict(description=str(var_name) + " on ERA5 grid", units="K", long_name=str(var_name)),
+            )
     #Default interpolation
     else:
-        print("ignored")
-        return target_grid # THIS NEEDS TO BE LATER REMOVED!!!!!
-        print("start interp")
         ds = regrid_lat_lon(origin_grid, target_grid, var_name,
                         method='bilinear',
                         i_use_xesmf=i_use_xesmf)
-        print("finished interp")
     return ds
 
 # TODO add sea ice temperature field as optional argument if it is supplied
