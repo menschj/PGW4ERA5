@@ -100,6 +100,10 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
     # surface skin temperature delta over land and over sea ice
     if i_debug >= 2:
         print('update surface skin temperature (ts)')
+    delta_siconc = load_delta(delta_input_dir, 'siconc',
+                        era_file[TIME_ERA], era_step_dt)
+    era_file[var_name_map['sic']].values += delta_siconc.values
+    deltas['siconc'] = delta_siconc
     # load surface temperature climate delta
     #(for grid points over land and sea ice)
     delta_ts = load_delta(delta_input_dir, 'ts',
