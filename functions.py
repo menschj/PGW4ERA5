@@ -788,7 +788,7 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
     else:
         periodic_lon = False
 
-
+    print(1)
     #### IMPLEMENTATION WITH XESMF
     ##########################################################################
     ## XESMF sometimes alters the exact values of the latitude coordinate
@@ -815,6 +815,7 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
     ## except for tiny differences that appear to originate from
     ## numerical precision.
     else:
+        print(2)
         #### LATITUDE INTERPOLATION
         ######################################################################
         ## make sure latitude is increasing with index
@@ -826,7 +827,7 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
             # flip latitude dimension
             ds_gcm = ds_gcm.reindex(
                     {LAT_GCM:list(reversed(ds_gcm[LAT_GCM]))})
-
+        print(3)
         ## If GCM dataset reaches poles (almost), add a pole grid point
         ## with the zonal average of the values closest to the pole
         if np.max(targ_lat.values) + dlat_gcm > 89.9:
@@ -839,7 +840,7 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
             south[LAT_GCM].values = -90
             south[var_name] = south[var_name].mean(dim=[LON_GCM])
             ds_gcm = xr.concat([south,ds_gcm], dim=LAT_GCM)
-
+        print(4)
         ## make sure there is no extrapolation to the North and South
         if ( (np.max(targ_lat.values) > np.max(ds_gcm[LAT_GCM].values)) |
              (np.min(targ_lat.values) < np.min(ds_gcm[LAT_GCM].values))):
@@ -853,10 +854,10 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
                               'than GCM dataset!. Perhaps consider using ' +
                               'ERA5 on a subdomain only if global coverage ' +
                               'is not required?') 
-
+        print(5)
         ## run interpolation
         ds_gcm = ds_gcm.interp({LAT_GCM:targ_lat})
-
+        print(6)
         #### LONGITUDE INTERPOLATION
         ######################################################################
         ### Implement periodic boundary conditions
@@ -887,8 +888,9 @@ def regrid_lat_lon(ds_gcm, ds_era5, var_name,
                               'is not required?') 
 
         ## run interpolation
+        print(7)
         ds_gcm = ds_gcm.interp({LON_GCM:targ_lon})
-
+        print(8)
     ## test for NaN
     #if np.sum(np.isnan(ds_gcm[var_name])).values > 0:
     #    raise ValueError('NaN in GCM dataset after interpolation.')
@@ -1080,16 +1082,16 @@ def interp_wrapper(
         Original values interpolated onto the target grid
     """
     #Custom interpolation for non-regular grids
-    if var_name == 'tos':
+    if var_name in ['tos', 'siconc']:
         land_fraction = target_grid["FR_LAND"][0,:,:]
-        tos_values = origin_grid['tos']
+        values = origin_grid[var_name]
         
         #Interpolate all 12 months indivdually
         result = np.empty((12,len(target_grid[LAT_ERA]), len(target_grid[LON_ERA])))
         for i in range(12):
             result[i,:,:] = nan_ignoring_interp(
                 land_fraction, 
-                tos_values[i,:,:], 
+                values[i,:,:], 
                 kernel_radius=nan_interp_kernel_radius,
                 sharpness=nan_interp_sharpness
             )
@@ -1104,13 +1106,17 @@ def interp_wrapper(
                 lon=(["lon"], target_grid[LON_ERA].data),
                 time=origin_grid[TIME_GCM]
             ),
-            attrs=dict(description="SST on ERA5 grid", units="K", long_name="Sea Surface Temperature"),
+            attrs=dict(description=str(var_name) + " on ERA5 grid", units="K", long_name=str(var_name)),
         )
     #Default interpolation
     else:
+        print("ignored")
+        return target_grid # THIS NEEDS TO BE LATER REMOVED!!!!!
+        print("start interp")
         ds = regrid_lat_lon(origin_grid, target_grid, var_name,
                         method='bilinear',
                         i_use_xesmf=i_use_xesmf)
+        print("finished interp")
     return ds
 
 # TODO add sea ice temperature field as optional argument if it is supplied
