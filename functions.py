@@ -909,13 +909,16 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, kernel_radius, sharpness):
         Passes the ERA5 land fraction and grid data
     da_delta : xr.array
         Passes the unstructured array from which to interpolate
-    radius : scaler
-        Passes a maximal distance for interpolation 
+    kernel_radius : int
+        Passes a maximal distance for interpolation in meters. Only applicable for ocean variables
+    sharpness : float
+        Passes a sharpness coefficent. The higher value it has the less contribution is associated with farther away grid points. 
+        Only applicable for ocean variables
     
     Returns
     -------
-    new_era5_grid : np.ndarray
-        da_delta interpolated to the ERA5 grid
+    new_era5_grid : np.2darray
+        Original values interpolated onto the target grid
     """
 
     #-------------------
@@ -957,6 +960,8 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, kernel_radius, sharpness):
     gcm_lon_meter = np.multiply(gcm_lon_meter, sign_map_lon)
     
     #Implement Boundary points
+    #Simply done by adding the whole field to the left and right. 
+    # This is crude but works fine as long as the grids dont become too large
     gcm_val_bd = np.empty(len(gcm_val)*3)
     gcm_lon_bd = np.empty(len(gcm_lon_meter)*3)
     gcm_lat_bd = np.empty(len(gcm_lat_meter)*3)
@@ -1015,6 +1020,7 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, kernel_radius, sharpness):
     #-------------------
     #Computing the interpolation
     #-------------------
+
     #Set up pyvista unstructured grids for both gcm and era5 data
     grid = PolyData(era5_points)
     points = PolyData(curv_points)
@@ -1027,6 +1033,7 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, kernel_radius, sharpness):
         radius=kernel_radius, 
         sharpness=sharpness
     )
+
     #-------------------
     #POSTPROCESSING ERA5 DATA
     #-------------------
@@ -1049,27 +1056,30 @@ def interp_wrapper(
     ):
     """Interpolation wrapper that allows for each variable to be assigned a custom scheme
 
-    This function implements for different variables different kinds of interpoaltion. Default is bi-linear
+    This function implements for different variables different kinds of interpolation. Default is bi-linear
     interpolation from regular grid to regular grid.
 
     Parameters
     ----------
 
-    origin_grid : xr.array
+    origin_grid : xr.DataSet
         Passes the GCM original grid structure and values
-    target_grid : xr.array
-        Passes target grid structure to interpolate
-    i_use_xesmf = boolean
+    target_grid : xr.DataSet
+        Passes target grid structure to interpolate to
+    i_use_xesmf : boolean
         Passes booloean to adjust which bi-linear scheme is used, only applicable for athmospheric variables
-    radius : scaler
-        Passes a maximal distance for interpolation, only applicable for ocean variables 
+    nan_interp_kernel_radius : int
+        Passes a maximal distance for interpolation in meters. Only applicable for ocean variables
+    nan_interp_sharpness : float
+        Passes a sharpness coefficent. The higher value it has the less contribution is associated with farther away grid points. 
+        Only applicable for ocean variables
     
     Returns
     -------
     new_era5_grid : xr.DataSet
-        da_delta interpolated to the ERA5 grid
+        Original values interpolated onto the target grid
     """
-    #Custom interpolation for TOS
+    #Custom interpolation for non-regular grids
     if var_name == 'tos':
         land_fraction = target_grid["FR_LAND"][0,:,:]
         tos_values = origin_grid['tos']
@@ -1103,8 +1113,10 @@ def interp_wrapper(
                         i_use_xesmf=i_use_xesmf)
     return ds
 
+# TODO add sea ice temperature field as optional argument if it is supplied
+
 def integrate_tos(tos_field, ts_field, land_frac, ice_frac):
-    """Combines TOS and TS temperature as a weighted according to land and ocean contribution
+    """Combines TOS and TS temperature as a weighted average according to land and ocean contribution
     
     This functions assumes that all fields are on the same grid!
 
@@ -1130,7 +1142,6 @@ def integrate_tos(tos_field, ts_field, land_frac, ice_frac):
     #Ocean mask
     ice_frac = ice_frac.reshape(-1)
     tos_field = tos_field.reshape(-1)
-    #TODO add cases for true mask
 
     mask = ~np.isnan(ice_frac) & ~np.isnan(tos_field)
     #Turn all fields into arrays for easier accessing
