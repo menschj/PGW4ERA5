@@ -113,7 +113,7 @@ for var_name in var_names:
     #    clim_periods = ['HIST','SCEN-HIST']
     # else:
     #    clim_periods = ['SCEN-HIST']
-    clim_periods = ['SCEN-HIST']  # ['HIST', 'SCEN-HIST']
+    clim_periods = ['HIST', 'SCEN-HIST']
     # iterate over the two types of GCM data files
     # (HIST and SCEN-HIST)
     for clim_period in clim_periods:
