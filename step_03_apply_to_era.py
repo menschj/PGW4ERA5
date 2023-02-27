@@ -374,6 +374,7 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
 
 
         ## save updated ERA5 file
+        print(np.nanmin(era_file[var_name_map['sic']].values))
         era_file.to_netcdf(out_era_file_path, mode='w')
         era_file.close()
         if i_debug >= 1:
