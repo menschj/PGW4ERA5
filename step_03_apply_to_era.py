@@ -102,8 +102,8 @@ def pgw_for_era5(inp_era_file_path, out_era_file_path,
         print('update surface skin temperature (ts)')
     delta_siconc = load_delta(delta_input_dir, 'siconc',
                         era_file[TIME_ERA], era_step_dt)
-    era_file[var_name_map['sic']].values += delta_siconc.values
-    deltas['siconc'] = delta_siconc
+    era_file[var_name_map['sic']].values += delta_siconc.values/100
+    #deltas['siconc'] = delta_siconc
     # load surface temperature climate delta
     #(for grid points over land and sea ice)
     delta_ts = load_delta(delta_input_dir, 'ts',
