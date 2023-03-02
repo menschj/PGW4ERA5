@@ -36,11 +36,7 @@ def drywet(numcolors, colormap):
 # read data
 # %%
 var_name = 'FR_SEA_ICE'
-old = xr.open_dataset('old_version.nc')
-new = xr.open_dataset('new_version.nc')
-new['FR_SEA_ICE'].values -= old['FR_SEA_ICE'].values 
-new.to_netcdf('diff_version.nc')
-print("diff done")
+
 sims = ['new', 'old', 'diff']
 friac = {}
 labels = {'new': 'Sea Ice update', 'old': 'Sea Ice static', 'diff': 'Difference between versions'}
