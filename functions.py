@@ -926,6 +926,17 @@ def nan_ignoring_interp(da_era5_land_fr, da_delta, kernel_radius, sharpness):
     #-------------------
     #PREPROCESSING GCM DATA
     #-------------------
+    if len(da_delta.coords[LAT_GCM_OCEAN].shape) == 2:
+        gcm_lat_raw = da_delta.coords[LAT_GCM_OCEAN].values
+        gcm_lon_raw = da_delta.coords[LON_GCM_OCEAN].values
+    elif len(da_delta.coords[LAT_GCM_OCEAN].shape) == 1:
+        gcm_lat_raw, gcm_lon_raw = np.meshgrid(
+            da_delta.coords[LAT_GCM_OCEAN].values, 
+            da_delta.coords[LON_GCM_OCEAN].values,
+            indexing='ij',
+        )
+    else:
+        raise NotImplementedError()
 
     #Construct lon and lat arrays for point cloud by flattening them into an array
     gcm_lat_raw = da_delta.coords[LAT_GCM_OCEAN].values.reshape(-1)
@@ -1129,7 +1140,7 @@ def interp_wrapper(
                         i_use_xesmf=i_use_xesmf)
     return ds
 
-# TODO add sea ice temperature field as optional argument if it is supplied
+
 
 def integrate_tos(tos_field, ts_field, land_frac, ice_frac):
     """Combines TOS and TS temperature as a weighted average according to land and ocean contribution
